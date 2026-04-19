@@ -1,0 +1,57 @@
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ── Secrets (KHÔNG BAO GIỜ commit) ──────────────────────────
+.env
+.env.local
+.env.production
+keys/
+*.pem
+*.key
+*.p12
+
+# ── Certs (nếu self-signed cho dev thì ok, nhưng CA key thì không) ──
+infrastructure/certs/*.key
+infrastructure/certs/ca.key
+
+# ── Database ─────────────────────────────────────────────────
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Node (Frontend) ──────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# ── Docker ───────────────────────────────────────────────────
+# Không ignore docker-compose.yml vì cần commit
+# Nhưng ignore override files có secrets
+docker-compose.override.yml
+
+# ── Logs ─────────────────────────────────────────────────────
+logs/
+*.log
