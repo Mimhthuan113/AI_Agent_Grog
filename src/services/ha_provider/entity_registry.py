@@ -30,44 +30,44 @@ class EntityInfo:
 # Value: EntityInfo
 
 ENTITY_REGISTRY: dict[str, EntityInfo] = {
-    # ── Den ────────────────────────────────────────────────
-    "den phong ngu": EntityInfo("light.phong_ngu", "Den phong ngu", "light"),
-    "den ngu": EntityInfo("light.phong_ngu", "Den phong ngu", "light"),
-    "den phong khach": EntityInfo("light.phong_khach", "Den phong khach", "light"),
-    "den khach": EntityInfo("light.phong_khach", "Den phong khach", "light"),
-    "den ban hoc": EntityInfo("light.ban_hoc", "Den ban hoc", "light"),
-    "den hoc": EntityInfo("light.ban_hoc", "Den ban hoc", "light"),
-    "den bep": EntityInfo("light.bep", "Den bep", "light"),
-    "den nha tam": EntityInfo("light.nha_tam", "Den nha tam", "light"),
-    "den hanh lang": EntityInfo("light.hanh_lang", "Den hanh lang", "light"),
+    # ── Đèn ────────────────────────────────────────────────
+    "den phong ngu": EntityInfo("light.phong_ngu", "Đèn phòng ngủ", "light"),
+    "den ngu": EntityInfo("light.phong_ngu", "Đèn phòng ngủ", "light"),
+    "den phong khach": EntityInfo("light.phong_khach", "Đèn phòng khách", "light"),
+    "den khach": EntityInfo("light.phong_khach", "Đèn phòng khách", "light"),
+    "den ban hoc": EntityInfo("light.ban_hoc", "Đèn bàn học", "light"),
+    "den hoc": EntityInfo("light.ban_hoc", "Đèn bàn học", "light"),
+    "den bep": EntityInfo("light.bep", "Đèn bếp", "light"),
+    "den nha tam": EntityInfo("light.nha_tam", "Đèn nhà tắm", "light"),
+    "den hanh lang": EntityInfo("light.hanh_lang", "Đèn hành lang", "light"),
 
-    # ── Quat ───────────────────────────────────────────────
-    "quat phong ngu": EntityInfo("switch.fan_phong_ngu", "Quat phong ngu", "switch"),
-    "quat ngu": EntityInfo("switch.fan_phong_ngu", "Quat phong ngu", "switch"),
-    "quat phong khach": EntityInfo("switch.fan_phong_khach", "Quat phong khach", "switch"),
-    "quat khach": EntityInfo("switch.fan_phong_khach", "Quat phong khach", "switch"),
+    # ── Quạt ───────────────────────────────────────────────
+    "quat phong ngu": EntityInfo("switch.fan_phong_ngu", "Quạt phòng ngủ", "switch"),
+    "quat ngu": EntityInfo("switch.fan_phong_ngu", "Quạt phòng ngủ", "switch"),
+    "quat phong khach": EntityInfo("switch.fan_phong_khach", "Quạt phòng khách", "switch"),
+    "quat khach": EntityInfo("switch.fan_phong_khach", "Quạt phòng khách", "switch"),
 
-    # ── Bep ────────────────────────────────────────────────
-    "bep": EntityInfo("switch.kitchen_stove", "Bep dien", "switch"),
-    "bep dien": EntityInfo("switch.kitchen_stove", "Bep dien", "switch"),
-    "lo vi song": EntityInfo("switch.kitchen_microwave", "Lo vi song", "switch"),
+    # ── Bếp ────────────────────────────────────────────────
+    "bep": EntityInfo("switch.kitchen_stove", "Bếp điện", "switch"),
+    "bep dien": EntityInfo("switch.kitchen_stove", "Bếp điện", "switch"),
+    "lo vi song": EntityInfo("switch.kitchen_microwave", "Lò vi sóng", "switch"),
 
-    # ── Dieu hoa ───────────────────────────────────────────
-    "dieu hoa": EntityInfo("climate.phong_ngu", "Dieu hoa phong ngu", "climate"),
-    "dieu hoa phong ngu": EntityInfo("climate.phong_ngu", "Dieu hoa phong ngu", "climate"),
-    "dieu hoa phong khach": EntityInfo("climate.phong_khach", "Dieu hoa phong khach", "climate"),
-    "may lanh": EntityInfo("climate.phong_ngu", "Dieu hoa phong ngu", "climate"),
+    # ── Điều hòa ───────────────────────────────────────────
+    "dieu hoa": EntityInfo("climate.phong_ngu", "Điều hòa phòng ngủ", "climate"),
+    "dieu hoa phong ngu": EntityInfo("climate.phong_ngu", "Điều hòa phòng ngủ", "climate"),
+    "dieu hoa phong khach": EntityInfo("climate.phong_khach", "Điều hòa phòng khách", "climate"),
+    "may lanh": EntityInfo("climate.phong_ngu", "Điều hòa phòng ngủ", "climate"),
 
-    # ── Khoa ───────────────────────────────────────────────
-    "khoa cua": EntityInfo("lock.cua_chinh", "Khoa cua chinh", "lock"),
-    "khoa cua chinh": EntityInfo("lock.cua_chinh", "Khoa cua chinh", "lock"),
-    "cua chinh": EntityInfo("lock.cua_chinh", "Khoa cua chinh", "lock"),
+    # ── Khóa ───────────────────────────────────────────────
+    "khoa cua": EntityInfo("lock.cua_chinh", "Khóa cửa chính", "lock"),
+    "khoa cua chinh": EntityInfo("lock.cua_chinh", "Khóa cửa chính", "lock"),
+    "cua chinh": EntityInfo("lock.cua_chinh", "Khóa cửa chính", "lock"),
 
-    # ── Cam bien ───────────────────────────────────────────
-    "nhiet do": EntityInfo("sensor.nhiet_do_phong", "Cam bien nhiet do", "sensor"),
-    "nhiet do phong": EntityInfo("sensor.nhiet_do_phong", "Cam bien nhiet do", "sensor"),
-    "do am": EntityInfo("sensor.do_am_phong", "Cam bien do am", "sensor"),
-    "cua ra vao": EntityInfo("binary_sensor.cua_ra_vao", "Cam bien cua", "sensor"),
+    # ── Cảm biến ───────────────────────────────────────────
+    "nhiet do": EntityInfo("sensor.nhiet_do_phong", "Cảm biến nhiệt độ", "sensor"),
+    "nhiet do phong": EntityInfo("sensor.nhiet_do_phong", "Cảm biến nhiệt độ", "sensor"),
+    "do am": EntityInfo("sensor.do_am_phong", "Cảm biến độ ẩm", "sensor"),
+    "cua ra vao": EntityInfo("binary_sensor.cua_ra_vao", "Cảm biến cửa", "sensor"),
 }
 
 # ── Mapping action tieng Viet → action code ────────────────
@@ -112,15 +112,17 @@ ACTION_MAP: dict[str, str] = {
 
 
 def _normalize(text: str) -> str:
-    """Chuan hoa text: lowercase, bo dau, strip."""
+    """Chuẩn hóa text: lowercase, bỏ dấu, strip."""
     import unicodedata
     text = text.strip().lower()
-    # Bo dau tieng Viet
+    # Xử lý đ/Đ trước (NFD không strip được)
+    text = text.replace("đ", "d").replace("Đ", "D")
+    # Bỏ dấu tiếng Việt
     nfkd = unicodedata.normalize("NFD", text)
     no_accent = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
-    # Bo ky tu dac biet
+    # Bỏ ký tự đặc biệt
     no_accent = "".join(c for c in no_accent if c.isalnum() or c == " ")
-    # Bo khoang trang thua
+    # Bỏ khoảng trắng thừa
     return " ".join(no_accent.split())
 
 

@@ -38,10 +38,11 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """Response tra ve cho user."""
+    """Response trả về cho user."""
     response: str
     success: bool
     request_id: str
+    category: str = "general"          # smart_home, greeting, time_query, general_chat...
     requires_confirmation: bool = False
     command: dict | None = None
     timestamp: str
@@ -67,8 +68,8 @@ class AuditEntry(BaseModel):
 @router.post(
     "/chat",
     response_model=ChatResponse,
-    summary="Gui lenh dieu khien",
-    description="Gui cau tieng Viet de dieu khien thiet bi nha thong minh.",
+    summary="Gửi lệnh hoặc hội thoại",
+    description="Gửi câu tiếng Việt — AI sẽ điều khiển thiết bị hoặc trả lời hội thoại.",
 )
 async def chat(
     body: ChatRequest,
@@ -76,13 +77,13 @@ async def chat(
     user: CurrentUser = Depends(get_current_user),
 ):
     """
-    Endpoint chinh — nhan cau tieng Viet, tra ket qua.
+    Endpoint chính — nhận câu tiếng Việt, xử lý đa năng như Siri.
 
     Flow:
-    1. User gui "Tat den phong ngu"
-    2. AI parse intent
-    3. Security Gateway validate + execute
-    4. Tra response tieng Viet
+    1. Siri Brain phân loại intent
+    2. Smart home → Security Gateway
+    3. Hội thoại → LLM trả lời trực tiếp
+    4. Thời gian/chào hỏi → response tức thì
     """
     ip = request.client.host if request.client else ""
 
@@ -102,6 +103,7 @@ async def chat(
         response=result.message,
         success=result.success,
         request_id=result.request_id,
+        category=result.category,
         requires_confirmation=result.requires_confirmation,
         command=result.command_executed,
         timestamp=datetime.now(timezone.utc).isoformat(),

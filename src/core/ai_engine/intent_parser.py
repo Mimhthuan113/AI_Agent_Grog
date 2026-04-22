@@ -166,26 +166,27 @@ def parse_with_fallback(user_message: str) -> dict | None:
 
 def parse_intent(user_message: str) -> dict | None:
     """
-    Parse cau tieng Viet thanh command.
-    Thu LLM truoc, fallback regex neu LLM fail.
+    Parse câu tiếng Việt thành command.
+    Thử regex trước (nhanh), LLM sau (chỉ khi regex fail).
 
     Args:
-        user_message: "Tat den phong ngu", "Bat dieu hoa 25 do"...
+        user_message: "Tắt đèn phòng ngủ", "Bật điều hòa 25 độ"...
 
     Returns:
         {"entity_id": "light.phong_ngu", "action": "turn_off", "params": {}}
-        hoac None neu khong parse duoc.
+        hoặc None nếu không parse được.
     """
-    # Thu LLM truoc
-    result = parse_with_llm(user_message)
+    # 1. Regex trước — tức thì, không cần network
+    result = parse_with_fallback(user_message)
     if result:
         return result
 
-    # Fallback regex
-    logger.info("[INTENT] LLM failed, trying fallback parser...")
-    result = parse_with_fallback(user_message)
+    # 2. LLM nếu regex fail (câu phức tạp)
+    logger.info("[INTENT] Regex failed, trying LLM parser...")
+    result = parse_with_llm(user_message)
     if result:
         return result
 
     logger.warning("[INTENT] Cannot parse: '%s'", user_message[:100])
     return None
+

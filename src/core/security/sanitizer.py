@@ -76,14 +76,14 @@ class SanitizerError(Exception):
 # ── Error Codes (khong lo stack trace) ─────────────────────
 
 SANITIZER_ERRORS = {
-    "INVALID_ENTITY_FORMAT": "Entity ID format khong hop le",
-    "INVALID_ACTION_FORMAT": "Action format khong hop le",
-    "MISSING_ENTITY_ID": "Thieu entity_id",
-    "MISSING_ACTION": "Thieu action",
-    "PARAM_VALIDATION_ERROR": "Tham so khong hop le",
-    "UNKNOWN_ENTITY_TYPE": "Loai entity khong duoc ho tro",
-    "INJECTION_DETECTED": "Phat hien noi dung khong hop le",
-    "INVALID_INPUT_TYPE": "Input phai la dictionary",
+    "INVALID_ENTITY_FORMAT": "Định dạng Entity ID không hợp lệ",
+    "INVALID_ACTION_FORMAT": "Định dạng Action không hợp lệ",
+    "MISSING_ENTITY_ID": "Thiếu entity_id",
+    "MISSING_ACTION": "Thiếu action",
+    "PARAM_VALIDATION_ERROR": "Tham số không hợp lệ",
+    "UNKNOWN_ENTITY_TYPE": "Loại entity không được hỗ trợ",
+    "INJECTION_DETECTED": "Phát hiện nội dung không hợp lệ",
+    "INVALID_INPUT_TYPE": "Input phải là dictionary",
 }
 
 

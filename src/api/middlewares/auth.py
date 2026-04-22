@@ -50,11 +50,21 @@ class CurrentUser:
 
 # ── Redis client singleton (lazy init) ─────────────────────
 _redis_client = None
+_redis_failed = False
+_redis_retry_at = 0.0
 
 
 async def _get_redis():
     """Lazy init Redis client — tránh import error khi Redis chưa sẵn sàng."""
-    global _redis_client
+    global _redis_client, _redis_failed, _redis_retry_at
+    import time
+
+    # Nếu đã biết Redis lỗi → skip, thử lại sau 60s
+    if _redis_failed:
+        if time.time() < _redis_retry_at:
+            return None
+        _redis_failed = False  # Reset để thử lại
+
     if _redis_client is None:
         try:
             import redis.asyncio as aioredis
@@ -62,6 +72,8 @@ async def _get_redis():
             _redis_client = aioredis.from_url(
                 settings.redis_url,
                 decode_responses=True,
+                socket_connect_timeout=0.3,   # Timeout 0.3s
+                socket_timeout=0.3,
             )
             # Test connection
             await _redis_client.ping()
@@ -71,6 +83,8 @@ async def _get_redis():
                 "[AUTH] Redis unavailable — blacklist disabled: %s", e
             )
             _redis_client = None
+            _redis_failed = True
+            _redis_retry_at = time.time() + 60  # Thử lại sau 60s
     return _redis_client
 
 

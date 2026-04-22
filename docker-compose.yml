@@ -1,94 +1,118 @@
-version: "3.9"
-
 # ============================================================
 # Smart AI Home Hub — Docker Compose
-# Chạy: docker compose up -d
 # ============================================================
-
-networks:
-  frontend_net:    # Nginx ↔ AI Backend
-  backend_net:     # AI Backend ↔ Redis ↔ (Postgres nếu cần)
-  iot_net:         # AI Backend ↔ Mosquitto
-
-volumes:
-  redis_data:
-  audit_data:
-  mosquitto_data:
-  mosquitto_log:
+# Chạy: docker-compose up -d
+# Stop:  docker-compose down
+# Logs:  docker-compose logs -f backend
+# ============================================================
 
 services:
 
-  # ── NGINX — Reverse Proxy & Serve Frontend ────────────────
+  # ── Backend (FastAPI) ──────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smarthome-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./keys:/app/keys:ro
+      - ./data:/app/data
+    networks:
+      - backend_net
+      - frontend_net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Redis (Token Blacklist + Rate Limit) ───────
+  redis:
+    image: redis:7-alpine
+    container_name: smarthome-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Mosquitto (MQTT Broker + TLS) ──────────────
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: smarthome-mqtt
+    restart: unless-stopped
+    ports:
+      - "8883:8883"   # MQTT TLS
+      - "9001:9001"   # WebSocket (optional)
+    volumes:
+      - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infrastructure/mosquitto/certs:/mosquitto/certs:ro
+      - ./infrastructure/mosquitto/passwd:/mosquitto/passwd:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - backend_net
+      - iot_net
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "3"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Nginx (Reverse Proxy + Static) ─────────────
   nginx:
     image: nginx:alpine
-    container_name: smarthub_nginx
+    container_name: smarthome-nginx
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro      # React build
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
     networks:
       - frontend_net
     depends_on:
-      - ai-backend
-    restart: unless-stopped
+      - backend
 
-  # ── AI BACKEND — FastAPI ──────────────────────────────────
-  ai-backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: smarthub_backend
-    env_file:
-      - .env
-    volumes:
-      - ./src:/app/src:ro
-      - ./keys:/app/keys:ro           # JWT keys
-      - audit_data:/app/data          # Audit log SQLite
-      - ./infrastructure/certs:/app/certs:ro
-    networks:
-      - frontend_net
-      - backend_net
-      - iot_net
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+# ── Networks ─────────────────────────────────────
+networks:
+  frontend_net:
+    name: smarthome_frontend
+    driver: bridge
+    # Nginx ↔ Backend
 
-  # ── REDIS — Cache, Rate Limit, JWT Blacklist ──────────────
-  redis:
-    image: redis:7-alpine
-    container_name: smarthub_redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
-    volumes:
-      - redis_data:/data
-    networks:
-      - backend_net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+  backend_net:
+    name: smarthome_backend
+    driver: bridge
+    # Backend ↔ Redis ↔ Mosquitto
 
-  # ── MOSQUITTO — MQTT Broker TLS ───────────────────────────
-  mosquitto:
-    image: eclipse-mosquitto:2
-    container_name: smarthub_mqtt
-    ports:
-      - "8883:8883"     # TLS (public — cho ESP32)
-      # 1883 KHÔNG expose — plain text bị disable
-    volumes:
-      - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./infrastructure/certs:/mosquitto/certs:ro
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
-    networks:
-      - iot_net
-    restart: unless-stopped
+  iot_net:
+    name: smarthome_iot
+    driver: bridge
+    # Mosquitto ↔ ESP32
+
+# ── Volumes ──────────────────────────────────────
+volumes:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:

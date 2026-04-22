@@ -26,6 +26,7 @@ from src.config import get_settings
 from src.api.routes.health import router as health_router
 from src.api.routes.auth import router as auth_router
 from src.api.routes.chat import router as chat_router
+from src.api.routes.voice import router as voice_router
 
 # ── Logging Setup ──────────────────────────────────────────
 logging.basicConfig(
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(chat_router)
+    app.include_router(voice_router)
 
     # ── Static Files (Frontend) ────────────────────────────
     static_dir = Path(__file__).parent.parent.parent / "static"

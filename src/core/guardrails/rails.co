@@ -1,0 +1,61 @@
+# ============================================================
+# NeMo Guardrails — Colang Flows
+# ============================================================
+# Dinh nghia cac flow chan injection va kiem tra output
+# ============================================================
+
+# ── Input Rails ──────────────────────────────────
+
+define flow check jailbreak
+  """Chan cac cau co y dinh jailbreak."""
+  $is_jailbreak = execute check_jailbreak_attempt
+  if $is_jailbreak
+    bot refuse jailbreak
+    stop
+
+define flow check injection
+  """Chan prompt injection."""
+  $has_injection = execute check_injection_patterns
+  if $has_injection
+    bot refuse injection
+    stop
+
+define flow check topic
+  """Chi cho phep topic smart home."""
+  $is_on_topic = execute check_allowed_topic
+  if not $is_on_topic
+    bot refuse off topic
+    stop
+
+# ── Output Rails ─────────────────────────────────
+
+define flow check response safety
+  """Dam bao response khong chua noi dung nguy hiem."""
+  $is_safe = execute check_output_safety
+  if not $is_safe
+    bot refuse unsafe response
+    stop
+
+define flow check hallucination
+  """Chan response bua dat."""
+  $is_hallucination = execute check_hallucination_risk
+  if $is_hallucination
+    bot refuse hallucination
+    stop
+
+# ── Bot Responses ────────────────────────────────
+
+define bot refuse jailbreak
+  "Xin lỗi, Aisha không thể thực hiện yêu cầu này. Tôi chỉ hỗ trợ điều khiển thiết bị trong nhà."
+
+define bot refuse injection
+  "Yêu cầu bị chặn vì lý do bảo mật. Hãy thử lại với câu lệnh bình thường."
+
+define bot refuse off topic
+  "Aisha chỉ có thể giúp bạn điều khiển thiết bị nhà thông minh. Bạn muốn làm gì với thiết bị?"
+
+define bot refuse unsafe response
+  "Tôi không thể trả lời câu hỏi này. Hãy hỏi về điều khiển thiết bị."
+
+define bot refuse hallucination
+  "Tôi không chắc chắn về thông tin này. Hãy thử lại với câu lệnh cụ thể hơn."

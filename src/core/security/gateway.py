@@ -61,13 +61,13 @@ class GatewayResponse:
 # ── Error Codes ────────────────────────────────────────────
 
 GATEWAY_ERRORS = {
-    "SANITIZER_ERROR": "Du lieu dau vao khong hop le",
-    "ACTION_DENIED": "Hanh dong bi chan vinh vien",
-    "ACTION_NOT_PERMITTED": "Hanh dong khong duoc phep",
-    "NO_RULE_FOUND": "Thiet bi khong co quy tac — bi chan mac dinh",
-    "CONFIRMATION_REQUIRED": "Can xac nhan truoc khi thuc hien",
-    "EXECUTION_ERROR": "Loi khi thuc thi lenh",
-    "INTERNAL_ERROR": "Loi he thong noi bo",
+    "SANITIZER_ERROR": "Dữ liệu đầu vào không hợp lệ",
+    "ACTION_DENIED": "Hành động bị chặn vĩnh viễn",
+    "ACTION_NOT_PERMITTED": "Hành động không được phép",
+    "NO_RULE_FOUND": "Thiết bị không có quy tắc — bị chặn mặc định",
+    "CONFIRMATION_REQUIRED": "Cần xác nhận trước khi thực hiện",
+    "EXECUTION_ERROR": "Lỗi khi thực thi lệnh",
+    "INTERNAL_ERROR": "Lỗi hệ thống nội bộ",
 }
 
 

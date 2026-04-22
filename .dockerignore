@@ -1,0 +1,33 @@
+# Dependencies
+__pycache__
+*.pyc
+.venv
+venv
+env
+
+# Secrets (NEVER include in image)
+.env
+.env.*
+keys/
+*.pem
+*.key
+
+# Data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Dev files
+tests/
+test_*.py
+docs/
+frontend/
+infrastructure/
+.git
+.gitignore
+.vscode
+.idea
+*.md
+docker-compose*.yml
+Dockerfile

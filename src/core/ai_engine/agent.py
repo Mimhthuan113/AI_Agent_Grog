@@ -1,18 +1,14 @@
 """
-AI Agent — Orchestrator chinh cua AI Engine
+AI Agent — Orchestrator chính của AI Engine
 =============================================
-Ket noi Intent Parser voi Security Gateway.
+Tích hợp Siri Brain + Security Gateway.
 
-Luong:
-  User message (tieng Viet)
-    → Intent Parser (LLM + Registry)
-    → Security Gateway (Sanitize → Rule → Execute → Audit)
-    → Response message (tieng Viet)
-
-Nguyen tac:
-- Moi lenh PHAI di qua Security Gateway
-- KHONG co duong tat nao bypass Gateway
-- Response luon user-friendly (tieng Viet)
+Luồng:
+  User input (text/voice tiếng Việt)
+    → Siri Brain (phân loại intent)
+    → Smart Home? → Intent Parser → Security Gateway
+    → General? → LLM trả lời trực tiếp
+    → Response (text tiếng Việt) → TTS
 """
 
 from __future__ import annotations
@@ -21,57 +17,68 @@ import logging
 from dataclasses import dataclass
 
 from src.core.ai_engine.intent_parser import parse_intent
+from src.core.ai_engine.siri_brain import (
+    process as siri_process,
+    IntentCategory,
+    SiriResponse,
+)
 from src.core.security.gateway import get_gateway, GatewayResponse
+from src.services.ha_provider.entity_registry import ENTITY_REGISTRY
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class AgentResponse:
-    """Ket qua xu ly tu AI Agent."""
-    message: str                     # Tin nhan tra ve cho user (tieng Viet)
+    """Kết quả xử lý từ AI Agent."""
+    message: str                     # Tin nhắn trả về cho user (tiếng Việt có dấu)
     success: bool
     request_id: str
+    category: str = "general"        # Loại intent: smart_home, greeting, time_query...
     requires_confirmation: bool = False
-    command_executed: dict | None = None  # Command da thuc thi (neu co)
+    command_executed: dict | None = None
+    speak: bool = True               # Có nên đọc bằng giọng nói không
 
 
 # ── Response Templates ─────────────────────────────────────
 
 RESPONSE_TEMPLATES = {
-    "success": "Da {action} {entity} thanh cong!",
-    "success_mock": "Da {action} {entity} (che do test).",
-    "denied": "Xin loi, toi khong the thuc hien yeu cau nay. Ly do: {reason}",
-    "confirm": "Ban co chac muon {action} {entity} khong? (Day la hanh dong can xac nhan)",
-    "parse_fail": "Xin loi, toi khong hieu yeu cau cua ban. Hay thu lai voi cau don gian hon.",
-    "error": "Co loi xay ra khi xu ly yeu cau. Vui long thu lai sau.",
+    "success": "Đã {action} {entity} thành công!",
+    "success_mock": "Đã {action} {entity} (chế độ test).",
+    "denied": "Xin lỗi, tôi không thể thực hiện yêu cầu này. Lý do: {reason}",
+    "confirm": "Bạn có chắc muốn {action} {entity} không? (Đây là hành động cần xác nhận)",
+    "parse_fail": "Xin lỗi, tôi không hiểu yêu cầu của bạn. Hãy thử lại với câu đơn giản hơn.",
+    "error": "Có lỗi xảy ra khi xử lý yêu cầu. Vui lòng thử lại sau.",
 }
 
 ACTION_NAMES_VI = {
-    "turn_on": "bat",
-    "turn_off": "tat",
-    "set_brightness": "chinh do sang",
-    "set_color": "doi mau",
-    "lock": "khoa",
-    "unlock": "mo khoa",
-    "set_temperature": "dat nhiet do",
-    "set_hvac_mode": "chuyen che do",
-    "get_state": "kiem tra",
+    "turn_on": "bật",
+    "turn_off": "tắt",
+    "set_brightness": "chỉnh độ sáng",
+    "set_color": "đổi màu",
+    "lock": "khóa",
+    "unlock": "mở khóa",
+    "set_temperature": "đặt nhiệt độ",
+    "set_hvac_mode": "chuyển chế độ",
+    "get_state": "kiểm tra",
 }
 
 DENY_REASONS_VI = {
-    "ACTION_DENIED": "Hanh dong nay bi chan vinh vien vi ly do an toan",
-    "ACTION_NOT_PERMITTED": "Hanh dong nay khong duoc phep cho thiet bi nay",
-    "NO_RULE_FOUND": "Thiet bi nay chua duoc cau hinh trong he thong",
-    "PARAM_VALIDATION_ERROR": "Tham so khong hop le",
-    "INJECTION_DETECTED": "Phat hien noi dung khong hop le trong yeu cau",
-    "INVALID_ENTITY_FORMAT": "Dinh dang thiet bi khong hop le",
-    "CONFIRMATION_REQUIRED": "Can xac nhan truoc khi thuc hien",
+    "ACTION_DENIED": "Hành động này bị chặn vĩnh viễn vì lý do an toàn",
+    "ACTION_NOT_PERMITTED": "Hành động này không được phép cho thiết bị này",
+    "NO_RULE_FOUND": "Thiết bị này chưa được cấu hình trong hệ thống",
+    "PARAM_VALIDATION_ERROR": "Tham số không hợp lệ",
+    "INJECTION_DETECTED": "Phát hiện nội dung không hợp lệ trong yêu cầu",
+    "INVALID_ENTITY_FORMAT": "Định dạng thiết bị không hợp lệ",
+    "CONFIRMATION_REQUIRED": "Cần xác nhận trước khi thực hiện",
 }
 
 
 def _get_entity_name(entity_id: str) -> str:
-    """Lay ten than thien tu entity_id."""
+    """Lấy tên thân thiện từ entity_id (có dấu tiếng Việt)."""
+    for alias, info in ENTITY_REGISTRY.items():
+        if info.entity_id == entity_id:
+            return info.friendly_name
     parts = entity_id.split(".")
     if len(parts) == 2:
         return parts[1].replace("_", " ")
@@ -85,21 +92,28 @@ async def process_message(
     session_id: str = "",
 ) -> AgentResponse:
     """
-    Xu ly 1 tin nhan tu user.
-    Day la entry point chinh cua AI Engine.
+    Xử lý 1 tin nhắn từ user — entry point chính.
 
-    Args:
-        user_message: Cau noi tieng Viet tu user
-        user_id: User ID tu JWT
-        ip_address: IP client
-        session_id: Session ID
-
-    Returns:
-        AgentResponse voi tin nhan tieng Viet.
+    Luồng Siri-like:
+    1. Siri Brain phân loại intent
+    2. Smart home → Intent Parser → Security Gateway
+    3. Khác → Siri Brain trả lời trực tiếp
     """
     logger.info("[AGENT] Processing: '%s' (user=%s)", user_message[:80], user_id)
 
-    # ── Step 1: Parse intent ───────────────────────────────
+    # ── Step 1: Siri Brain phân loại ──────────────────────
+    siri_result: SiriResponse = await siri_process(user_message, user_id)
+
+    # ── Nếu KHÔNG phải smart home → trả lời trực tiếp ────
+    if not siri_result.is_smart_home:
+        return AgentResponse(
+            message=siri_result.text,
+            success=True,
+            request_id="siri-direct",
+            category=siri_result.category.value,
+        )
+
+    # ── Smart Home → Intent Parser + Gateway ──────────────
     intent = parse_intent(user_message)
 
     if intent is None:
@@ -108,6 +122,7 @@ async def process_message(
             message=RESPONSE_TEMPLATES["parse_fail"],
             success=False,
             request_id="parse-fail",
+            category="smart_home",
         )
 
     entity_id = intent["entity_id"]
@@ -116,7 +131,7 @@ async def process_message(
     entity_name = _get_entity_name(entity_id)
     action_name = ACTION_NAMES_VI.get(action, action)
 
-    # ── Step 2: Send qua Security Gateway ──────────────────
+    # ── Security Gateway ──────────────────────────────────
     gateway = get_gateway()
     gw_result: GatewayResponse = await gateway.process_command(
         raw_input={
@@ -129,7 +144,7 @@ async def process_message(
         session_id=session_id,
     )
 
-    # ── Step 3: Build response ─────────────────────────────
+    # ── Build response ────────────────────────────────────
 
     if gw_result.requires_confirmation:
         return AgentResponse(
@@ -138,6 +153,7 @@ async def process_message(
             ),
             success=True,
             request_id=gw_result.request_id,
+            category="smart_home",
             requires_confirmation=True,
             command_executed=intent,
         )
@@ -153,15 +169,17 @@ async def process_message(
             ),
             success=True,
             request_id=gw_result.request_id,
+            category="smart_home",
             command_executed=intent,
         )
 
     # Denied
     deny_reason = DENY_REASONS_VI.get(
-        gw_result.error_code or "", gw_result.error_msg or "Khong ro ly do"
+        gw_result.error_code or "", gw_result.error_msg or "Không rõ lý do"
     )
     return AgentResponse(
         message=RESPONSE_TEMPLATES["denied"].format(reason=deny_reason),
         success=False,
         request_id=gw_result.request_id,
+        category="smart_home",
     )
