@@ -37,6 +37,11 @@ from src.core.security.rule_engine import (
     NoRuleFoundError,
 )
 from src.core.security.audit_logger import AuditRecord, get_audit_logger
+from src.core.security.rate_limiter import (
+    get_rate_limiter,
+    RateLimitResult,
+)
+from src.core.security.rbac import check_permission, RBACError
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +61,7 @@ class GatewayResponse:
     confirmation_token: str | None = None
     ha_result: dict | None = None        # Ket qua tu HA
     ha_response_ms: int | None = None
+    pipeline_steps: list[dict] | None = None  # Chi tiet tung buoc pipeline
 
 
 # ── Error Codes ────────────────────────────────────────────
@@ -68,6 +74,9 @@ GATEWAY_ERRORS = {
     "CONFIRMATION_REQUIRED": "Cần xác nhận trước khi thực hiện",
     "EXECUTION_ERROR": "Lỗi khi thực thi lệnh",
     "INTERNAL_ERROR": "Lỗi hệ thống nội bộ",
+    "RATE_LIMITED": "Bạn gửi quá nhiều lệnh — vui lòng chờ chút",
+    "CIRCUIT_OPEN": "Hệ thống tạm ngưng — vui lòng thử lại sau",
+    "RBAC_DENIED": "Bạn không có quyền thực hiện lệnh này",
 }
 
 
@@ -88,6 +97,7 @@ class SecurityGateway:
 
     def __init__(self):
         self._audit = get_audit_logger()
+        self._rate_limiter = get_rate_limiter()
         # Phase 2: inject ha_client here
         self._ha_client = None
 
@@ -101,6 +111,7 @@ class SecurityGateway:
         user_id: str,
         ip_address: str = "",
         session_id: str = "",
+        user_roles: list[str] | None = None,
     ) -> GatewayResponse:
         """
         Xu ly 1 lenh tu AI Engine qua toan bo security pipeline.
@@ -123,14 +134,64 @@ class SecurityGateway:
         ha_result_str = None
         ha_response_ms = None
 
+        # Pipeline step tracker
+        steps: list[dict] = []
+        pipeline_start = time.monotonic()
+
+        def _step(name: str, status: str, detail: str = ""):
+            """Ghi 1 step vào pipeline log."""
+            elapsed = int((time.monotonic() - pipeline_start) * 1000)
+            steps.append({
+                "name": name,
+                "status": status,  # pass | fail | skip | pending
+                "detail": detail,
+                "elapsed_ms": elapsed,
+            })
+
+        def _make_response(**kwargs) -> GatewayResponse:
+            """Tạo GatewayResponse kèm pipeline_steps."""
+            kwargs["pipeline_steps"] = steps
+            return GatewayResponse(**kwargs)
+
         try:
+            # ── Step 0: Rate Limit ─────────────────────────
+            rl_result = self._rate_limiter.check_rate_limit(
+                user_id=user_id,
+                entity_id=entity_id if entity_id != "unknown" else None,
+            )
+            if rl_result.result == RateLimitResult.RATE_LIMITED:
+                _step("Rate Limiter", "fail", rl_result.reason or "Quá nhiều request")
+                await self._log_audit(
+                    request_id="rate-limited",
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    session_id=session_id,
+                    entity_id=entity_id,
+                    action=action,
+                    params="{}",
+                    decision="RATE_LIMITED",
+                    deny_reason="RATE_LIMITED",
+                    safety_level="",
+                )
+                return _make_response(
+                    request_id="rate-limited",
+                    success=False,
+                    decision="RATE_LIMITED",
+                    safety_level="",
+                    error_code="RATE_LIMITED",
+                    error_msg=GATEWAY_ERRORS["RATE_LIMITED"],
+                )
+            _step("Rate Limiter", "pass", f"Remaining: {rl_result.remaining}")
+
             # ── Step 1: Sanitize ───────────────────────────
             try:
                 clean_cmd = sanitize(raw_input, user_id)
                 request_id = clean_cmd.request_id
                 entity_id = clean_cmd.entity_id
                 action = clean_cmd.action
+                _step("Sanitizer", "pass", f"entity={entity_id} action={action}")
             except SanitizerError as e:
+                _step("Sanitizer", "fail", e.message)
                 deny_reason = e.error_code
                 await self._log_audit(
                     request_id=request_id or "sanitizer-fail",
@@ -144,7 +205,7 @@ class SecurityGateway:
                     deny_reason=e.error_code,
                     safety_level="",
                 )
-                return GatewayResponse(
+                return _make_response(
                     request_id=request_id or "sanitizer-fail",
                     success=False,
                     decision="DENIED",
@@ -153,12 +214,44 @@ class SecurityGateway:
                     error_msg=e.message,
                 )
 
+            # ── Step 1b: RBAC Check ────────────────────────
+            if user_roles:
+                try:
+                    check_permission(user_roles, clean_cmd.entity_id, clean_cmd.action)
+                    _step("RBAC", "pass", f"roles={user_roles}")
+                except RBACError as e:
+                    _step("RBAC", "fail", str(e))
+                    await self._log_audit(
+                        request_id=request_id,
+                        user_id=user_id,
+                        ip_address=ip_address,
+                        session_id=session_id,
+                        entity_id=entity_id,
+                        action=action,
+                        params=json.dumps(clean_cmd.params),
+                        decision="DENIED",
+                        deny_reason="RBAC_DENIED",
+                        safety_level="",
+                    )
+                    return _make_response(
+                        request_id=request_id,
+                        success=False,
+                        decision="DENIED",
+                        safety_level="",
+                        error_code="RBAC_DENIED",
+                        error_msg=GATEWAY_ERRORS["RBAC_DENIED"],
+                    )
+            else:
+                _step("RBAC", "skip", "No roles provided")
+
             # ── Step 2: Rule Engine ────────────────────────
             try:
                 safety_level = evaluate(clean_cmd.entity_id, clean_cmd.action)
                 safety_level_str = safety_level.value
                 decision = "APPROVED"
+                _step("Rule Engine", "pass", f"level={safety_level_str}")
             except ActionDeniedError:
+                _step("Rule Engine", "fail", "ACTION_DENIED (chặn vĩnh viễn)")
                 decision = "DENIED"
                 deny_reason = "ACTION_DENIED"
                 safety_level_str = "critical"
@@ -175,7 +268,7 @@ class SecurityGateway:
                     deny_reason="ACTION_DENIED",
                     safety_level="critical",
                 )
-                return GatewayResponse(
+                return _make_response(
                     request_id=request_id,
                     success=False,
                     decision="DENIED",
@@ -185,6 +278,7 @@ class SecurityGateway:
                 )
 
             except ActionNotPermittedError:
+                _step("Rule Engine", "fail", "ACTION_NOT_PERMITTED")
                 decision = "DENIED"
                 deny_reason = "ACTION_NOT_PERMITTED"
 
@@ -200,7 +294,7 @@ class SecurityGateway:
                     deny_reason="ACTION_NOT_PERMITTED",
                     safety_level="",
                 )
-                return GatewayResponse(
+                return _make_response(
                     request_id=request_id,
                     success=False,
                     decision="DENIED",
@@ -210,6 +304,7 @@ class SecurityGateway:
                 )
 
             except NoRuleFoundError:
+                _step("Rule Engine", "fail", "NO_RULE_FOUND")
                 decision = "DENIED"
                 deny_reason = "NO_RULE_FOUND"
 
@@ -225,7 +320,7 @@ class SecurityGateway:
                     deny_reason="NO_RULE_FOUND",
                     safety_level="",
                 )
-                return GatewayResponse(
+                return _make_response(
                     request_id=request_id,
                     success=False,
                     decision="DENIED",
@@ -239,6 +334,7 @@ class SecurityGateway:
                 clean_cmd.entity_id, clean_cmd.action
             )
             if needs_confirm and safety_level in (SafetyLevel.WARNING, SafetyLevel.CRITICAL):
+                _step("Confirmation", "pending", f"level={safety_level_str}")
                 await self._log_audit(
                     request_id=request_id,
                     user_id=user_id,
@@ -252,7 +348,7 @@ class SecurityGateway:
                     safety_level=safety_level_str,
                     ha_result="PENDING_CONFIRMATION",
                 )
-                return GatewayResponse(
+                return _make_response(
                     request_id=request_id,
                     success=True,
                     decision="APPROVED",
@@ -260,6 +356,34 @@ class SecurityGateway:
                     requires_confirmation=True,
                     error_msg=GATEWAY_ERRORS["CONFIRMATION_REQUIRED"],
                 )
+            else:
+                _step("Confirmation", "skip", "Không cần xác nhận")
+
+            # ── Step 2c: Circuit Breaker ───────────────────
+            cb_result = self._rate_limiter.check_circuit()
+            if cb_result.result == RateLimitResult.CIRCUIT_OPEN:
+                _step("Circuit Breaker", "fail", "OPEN — HA không khả dụng")
+                await self._log_audit(
+                    request_id=request_id,
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    session_id=session_id,
+                    entity_id=entity_id,
+                    action=action,
+                    params=json.dumps(clean_cmd.params),
+                    decision="DENIED",
+                    deny_reason="CIRCUIT_OPEN",
+                    safety_level=safety_level_str,
+                )
+                return _make_response(
+                    request_id=request_id,
+                    success=False,
+                    decision="DENIED",
+                    safety_level=safety_level_str,
+                    error_code="CIRCUIT_OPEN",
+                    error_msg=GATEWAY_ERRORS["CIRCUIT_OPEN"],
+                )
+            _step("Circuit Breaker", "pass", "CLOSED")
 
             # ── Step 3: Execute (call HA) ──────────────────
             ha_result_dict = None
@@ -273,8 +397,10 @@ class SecurityGateway:
                         params=clean_cmd.params,
                     )
                     ha_result_str = "SUCCESS"
+                    self._rate_limiter.circuit.record_success()
                 except Exception as e:
                     ha_result_str = "FAILED"
+                    self._rate_limiter.circuit.record_failure()
                     logger.error("[GATEWAY] HA call failed: %s", str(e)[:200])
             else:
                 # HA client chua co — mock response (dev mode)
@@ -286,6 +412,8 @@ class SecurityGateway:
                 ha_result_str = "SUCCESS_MOCK"
 
             ha_response_ms = int((time.monotonic() - start_time) * 1000)
+            _step("Execute HA", "pass" if "SUCCESS" in (ha_result_str or "") else "fail",
+                  f"{ha_result_str} ({ha_response_ms}ms)")
 
             # ── Step 4: Audit Log ──────────────────────────
             await self._log_audit(
@@ -302,8 +430,9 @@ class SecurityGateway:
                 ha_result=ha_result_str,
                 ha_response_ms=ha_response_ms,
             )
+            _step("Audit Log", "pass", f"req={request_id[:8]}")
 
-            return GatewayResponse(
+            return _make_response(
                 request_id=request_id,
                 success=True,
                 decision="APPROVED",

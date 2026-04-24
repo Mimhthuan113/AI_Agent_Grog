@@ -17,6 +17,8 @@ PyJWT==2.12.1
 bcrypt==5.0.0
 passlib==1.7.4
 cryptography==46.0.5
+google-auth==2.38.0
+requests==2.32.3
 
 # ── HTTP Client (Groq API) ──────────────────
 httpx==0.28.1
