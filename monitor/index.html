@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aisha — Pipeline Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ── Header ──────────────────────── -->
+  <header class="mon-header">
+    <div class="header-left">
+      <div class="pulse-dot"></div>
+      <h1>Aisha Pipeline Monitor</h1>
+    </div>
+    <div class="header-right">
+      <span class="conn-status" id="connStatus">⏳ Đang kết nối...</span>
+      <span class="event-count" id="eventCount">0 events</span>
+    </div>
+  </header>
+
+  <!-- ── Pipeline Diagram (Tree animated) ───── -->
+  <section class="pipeline-diagram" id="pipelineDiagram">
+    <div class="tree-root">
+      <div class="pipe-node" id="node-user" data-label="👤 User">
+        <div class="node-inner">👤</div>
+        <span class="node-name">User</span>
+      </div>
+      <div class="pipe-arrow-vertical" id="arrow-0"><div class="arrow-packet"></div></div>
+      <div class="pipe-node" id="node-brain" data-label="🧠 Siri Brain">
+        <div class="node-inner">🧠</div>
+        <span class="node-name">Siri Brain</span>
+      </div>
+      <div class="split-point">
+        <!-- Vạch T -->
+        <div class="split-horizontal"></div>
+        <div class="split-vertical-left"></div>
+        <div class="split-vertical-right"></div>
+      </div>
+    </div>
+    
+    <div class="tree-branches">
+      <!-- 🌿 Nhánh Trái: Smart Home Security Pipeline -->
+      <div class="branch">
+        <div class="branch-title">🏠 SMART HOME PIPELINE</div>
+        <div class="node-row vertical-flow">
+          <div class="pipe-node" id="node-rate" data-label="⏱ Rate Limiter">
+            <div class="node-inner">⏱</div>
+            <span class="node-name">Rate Limit</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-2"><div class="arrow-packet"></div></div>
+          <div class="pipe-node" id="node-sanitizer" data-label="🧹 Sanitizer">
+            <div class="node-inner">🧹</div>
+            <span class="node-name">Sanitizer</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-3"><div class="arrow-packet"></div></div>
+          <div class="pipe-node" id="node-rbac" data-label="👥 RBAC">
+            <div class="node-inner">👥</div>
+            <span class="node-name">RBAC</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-4"><div class="arrow-packet"></div></div>
+          <div class="pipe-node" id="node-rule" data-label="📜 Rule Engine">
+            <div class="node-inner">📜</div>
+            <span class="node-name">Rule Engine</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-5"><div class="arrow-packet"></div></div>
+          <div class="pipe-node" id="node-cb" data-label="⚡ Circuit Breaker">
+            <div class="node-inner">⚡</div>
+            <span class="node-name">Breaker</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-6"><div class="arrow-packet"></div></div>
+          <div class="pipe-node" id="node-ha" data-label="🏠 Execute HA">
+            <div class="node-inner">🏠</div>
+            <span class="node-name">HA Protocol</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🌿 Nhánh Phải: System Action Pipeline (App / File Ops) -->
+      <div class="branch">
+        <div class="branch-title">⚙️ SYSTEM AGENT PIPELINE</div>
+        <div class="node-row vertical-flow">
+          <div class="pipe-node" id="node-router" data-label="📝 App Router">
+            <div class="node-inner">📝</div>
+            <span class="node-name">App Router</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-router"><div class="arrow-packet"></div></div>
+          <div class="pipe-node" id="node-os" data-label="🖥 OS Execution">
+            <div class="node-inner">🖥</div>
+            <span class="node-name">Native Executor</span>
+          </div>
+          <div class="pipe-arrow-vertical" id="arrow-os"><div class="arrow-packet"></div></div>
+          <!-- Audit dùng chung cho cả 2, nhưng ta hoạ đồ ở nhánh này, hoặc chập lại. 
+               Để đẹp, mỗi nhánh có Audit riêng, cho dễ code hiệu ứng -->
+          <div class="pipe-node" id="node-audit-os" data-label="📋 System Audit">
+            <div class="node-inner">📋</div>
+            <span class="node-name">Log / Exit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nút thắt chập 2 nhánh lại về Audit DB chung (tùy chọn) -->
+    <div style="display:flex; justify-content:center; padding-top:20px;">
+       <div class="pipe-node" id="node-audit" data-label="📋 Audit DB">
+          <div class="node-inner">📋</div>
+          <span class="node-name">Audit Database</span>
+       </div>
+    </div>
+  </section>
+
+  <!-- ── Live Feed ─────────────────────── -->
+  <section class="live-feed">
+    <h2>📡 Live Feed</h2>
+    <div class="feed-list" id="feedList">
+      <div class="feed-empty">Chờ events từ hệ thống...</div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

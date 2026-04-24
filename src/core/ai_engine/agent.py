@@ -24,6 +24,7 @@ from src.core.ai_engine.siri_brain import (
 )
 from src.core.security.gateway import get_gateway, GatewayResponse
 from src.services.ha_provider.entity_registry import ENTITY_REGISTRY
+from src.core.app_actions.router import parse_app_intent, execute_app_action
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class AgentResponse:
     requires_confirmation: bool = False
     command_executed: dict | None = None
     speak: bool = True               # Có nên đọc bằng giọng nói không
+    pipeline_steps: list[dict] | None = None  # Chi tiết pipeline (workflow monitor)
 
 
 # ── Response Templates ─────────────────────────────────────
@@ -90,6 +92,8 @@ async def process_message(
     user_id: str,
     ip_address: str = "",
     session_id: str = "",
+    user_roles: list[str] | None = None,
+    user_location: dict | None = None,
 ) -> AgentResponse:
     """
     Xử lý 1 tin nhắn từ user — entry point chính.
@@ -102,7 +106,63 @@ async def process_message(
     logger.info("[AGENT] Processing: '%s' (user=%s)", user_message[:80], user_id)
 
     # ── Step 1: Siri Brain phân loại ──────────────────────
-    siri_result: SiriResponse = await siri_process(user_message, user_id)
+    siri_result: SiriResponse = await siri_process(user_message, user_id, user_location=user_location)
+
+    # ── Nếu APP_ACTION → route qua App Router (owner only) ──
+    if siri_result.category == IntentCategory.APP_ACTION:
+        # RBAC: chỉ owner mới được dùng app actions
+        if user_roles and "owner" not in user_roles:
+            return AgentResponse(
+                message="Xin lỗi, chức năng điều khiển ứng dụng chỉ dành cho chủ nhà.",
+                success=False,
+                request_id="rbac-app",
+                category="app_action",
+            )
+
+        app_intent = parse_app_intent(user_message)
+        if app_intent:
+            # Đính kèm GPS location vào params nếu có
+            if user_location:
+                app_intent["params"]["_location"] = user_location
+            result = await execute_app_action(
+                app_intent["provider"],
+                app_intent["action"],
+                app_intent["params"],
+            )
+
+            step_status = "pass" if result.success else "fail"
+            action_desc = f"{result.provider} ({result.action})"
+            # Ghi lại "vào app gì kêu mở gì" chi tiết!
+            if result.message:
+                # Cắt gọn chữ để gắn vào label của bước pipeline
+                action_desc = result.message.replace("Đã ", "").replace("Đang ", "")
+
+            steps_list = [
+                {"name": "App Router (Parse)", "status": "pass"},
+                {"name": f"OS: {action_desc[:40]}...", "status": step_status},
+                {"name": "Local Audit Log", "status": step_status}
+            ]
+
+            return AgentResponse(
+                message=result.message,
+                success=result.success,
+                request_id=f"app-{result.provider}",
+                category="app_action",
+                command_executed={
+                    "provider": result.provider,
+                    "action": result.action,
+                    "intent_uri": result.intent_uri,
+                    "data": result.data,
+                },
+                pipeline_steps=steps_list,
+            )
+        # Fallback: không parse được → trả lời bằng LLM
+        return AgentResponse(
+            message=siri_result.text,
+            success=True,
+            request_id="siri-direct",
+            category=siri_result.category.value,
+        )
 
     # ── Nếu KHÔNG phải smart home → trả lời trực tiếp ────
     if not siri_result.is_smart_home:
@@ -142,11 +202,19 @@ async def process_message(
         user_id=user_id,
         ip_address=ip_address,
         session_id=session_id,
+        user_roles=user_roles,
     )
 
     # ── Build response ────────────────────────────────────
 
     if gw_result.requires_confirmation:
+        # Lưu lệnh chờ xác nhận cho /chat/confirm
+        from src.api.routes.chat import store_pending_command
+        store_pending_command(
+            request_id=gw_result.request_id,
+            command=intent,
+            user_id=user_id,
+        )
         return AgentResponse(
             message=RESPONSE_TEMPLATES["confirm"].format(
                 action=action_name, entity=entity_name
@@ -156,6 +224,7 @@ async def process_message(
             category="smart_home",
             requires_confirmation=True,
             command_executed=intent,
+            pipeline_steps=gw_result.pipeline_steps,
         )
 
     if gw_result.success:
@@ -171,6 +240,7 @@ async def process_message(
             request_id=gw_result.request_id,
             category="smart_home",
             command_executed=intent,
+            pipeline_steps=gw_result.pipeline_steps,
         )
 
     # Denied
@@ -182,4 +252,5 @@ async def process_message(
         success=False,
         request_id=gw_result.request_id,
         category="smart_home",
+        pipeline_steps=gw_result.pipeline_steps,
     )

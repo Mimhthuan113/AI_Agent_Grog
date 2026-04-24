@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 class IntentCategory(str, Enum):
     SMART_HOME = "smart_home"       # Bật/tắt thiết bị
+    APP_ACTION = "app_action"       # Mở app / gọi điện / nhắn tin / tìm kiếm
     TIME_QUERY = "time_query"       # Mấy giờ? Hôm nay thứ mấy?
     GREETING = "greeting"           # Chào hỏi
     SELF_INTRO = "self_intro"       # Tên bạn là gì? Bạn là ai?
@@ -40,6 +41,7 @@ class IntentCategory(str, Enum):
     COMPLIMENT = "compliment"       # Khen ngợi
     GENERAL_CHAT = "general_chat"   # Hội thoại thông thường
     DANGEROUS = "dangerous"         # Prompt injection / nguy hiểm
+    LOCATION_QUERY = "location_query"  # Tôi đang ở đâu?
 
 
 # ── Pattern matchers ───────────────────────────────────────
@@ -70,12 +72,14 @@ SELF_INTRO_PATTERNS = [
 ]
 
 SMART_HOME_KEYWORDS = [
-    "bật", "tắt", "mở", "đóng", "khóa",
+    "bật", "tắt", "đóng", "khóa",
+    "mở cửa", "mở đèn", "mở quạt", "mở máy lạnh", "mở điều hòa",
+    "mở bếp", "mở lò",
     "đèn", "den", "quạt", "quat", "điều hòa", "dieu hoa",
     "bếp", "bep", "cửa", "cua", "nhiệt độ", "nhiet do",
     "độ sáng", "do sang", "máy lạnh", "may lanh",
     "cảm biến", "cam bien", "lò vi sóng", "lo vi song",
-    "bat", "tat", "mo", "dong", "khoa",
+    "bat", "tat", "dong", "khoa",
     "light", "switch", "lock", "climate", "sensor",
     "turn on", "turn off",
 ]
@@ -89,6 +93,16 @@ DANGEROUS_PATTERNS = [
     r"(DAN|developer)\s+mode",
     r"forget\s+(all|everything)",
     r"override\s+(security|rules)",
+]
+
+LOCATION_PATTERNS = [
+    r"(?:tôi|tao|mình)\s*đang\s*ở\s*đâu",
+    r"vị\s*trí\s*(hiện\s*tại|của\s*tôi)",
+    r"đang\s*ở\s*đâu",
+    r"vị\s*trí\s*của\s*tôi",
+    r"địa\s*chỉ.*hiện\s*tại",
+    r"where\s*am\s*i",
+    r"location",
 ]
 
 THANKS_PATTERNS = [
@@ -107,6 +121,56 @@ COMPLIMENT_PATTERNS = [
     r"(bạn\s*(đẹp|dễ\s*thương|xinh|cute|thông\s*minh|giỏi))",
     r"(yêu\s*bạn|thích\s*bạn|love\s*you)",
     r"(bạn\s*nói\s*hay|nói\s*giỏi)",
+]
+
+APP_ACTION_KEYWORDS = [
+    # Phone / SMS (có dấu + không dấu)
+    "gọi cho", "goi cho", "gọi điện", "goi dien",
+    "quay số", "quay so", "nhắn tin", "nhan tin",
+    "gửi sms", "gui sms", "gọi số", "goi so",
+    # Zalo
+    "zalo", "nhắn zalo", "nhan zalo",
+    "gọi zalo", "goi zalo", "mở zalo", "mo zalo", "vào zalo", "vao zalo",
+    # Facebook / Messenger
+    "facebook", "messenger", "fb",
+    "mở fb", "mo fb", "mở facebook", "mo facebook",
+    # YouTube
+    "youtube", "ytb", "yt", "xem video",
+    "tìm video", "tim video",
+    "mở youtube", "mo youtube", "mở ytb", "mo ytb",
+    # Maps
+    "chỉ đường", "chi duong", "dẫn đường", "dan duong",
+    "bản đồ", "ban do", "maps",
+    "gần đây", "gan day", "navigate", "mở maps", "mo maps",
+    "tìm đường", "tim duong",
+    # Gmail
+    "email", "gmail", "gửi email", "gui email",
+    "mở email", "mo email", "mở gmail", "mo gmail",
+    # Camera
+    "camera", "chụp ảnh", "chup anh", "chụp hình", "chup hinh",
+    # TikTok
+    "tiktok", "mở tiktok", "mo tiktok",
+    # Spotify
+    "spotify", "nghe nhạc", "nghe nhac",
+    "phát nhạc", "phat nhac", "mở spotify", "mo spotify",
+    # Cốc Cốc
+    "cốc cốc", "coc coc", "mở cốc cốc", "mo coc coc",
+    # Web
+    "tìm kiếm", "tim kiem", "search", "mở trang", "mo trang",
+    "google",
+    # System Apps (generic)
+    "notepad", "paint", "calculator", "máy tính", "may tinh",
+    "explorer", "this pc", "thu muc", "thư mục",
+    "đồng hồ", "dong ho", "báo thức", "bao thuc", "alarm", "clock",
+    "cài đặt", "cai dat", "settings",
+    "vscode", "vs code", "word", "excel", "powerpoint",
+    "cmd", "powershell", "task manager",
+    "edge", "firefox",
+    # File Operations
+    "tạo folder", "tao folder", "tạo thư mục", "tao thu muc",
+    "tạo file", "tao file", "tạo tập tin", "tao tap tin",
+    "viết file", "viet file", "ghi file",
+    "tạo foder",  # typo thường gặp
 ]
 
 
@@ -132,15 +196,18 @@ QUY TẮC:
 
 KHẢ NĂNG:
 - Điều khiển thiết bị nhà thông minh (đèn, quạt, điều hòa, khóa cửa)
+- Mở ứng dụng điện thoại (Zalo, Facebook, YouTube, Spotify, TikTok...)
+- Gọi điện, nhắn tin SMS, nhắn Zalo
+- Tìm kiếm Google, chỉ đường trên Maps
+- Gửi email qua Gmail
+- Mở camera chụp ảnh
 - Trả lời câu hỏi thông thường
-- Kể chuyện, đùa vui
 - Thông tin thời gian
 
 KHÔNG CÓ KHẢ NĂNG:
-- Phát nhạc
-- Gọi điện
+- Đọc nội dung bên trong ứng dụng khác
 - Đặt hàng online
-- Truy cập internet
+- Truy cập tài khoản ngân hàng
 """
 
 
@@ -192,7 +259,12 @@ def classify_intent(text: str) -> IntentCategory:
         if re.search(pattern, text_lower, re.IGNORECASE):
             return IntentCategory.DANGEROUS
 
-    # 2. Smart Home — có keyword thiết bị
+    # 2. App Action — TRƯỚC smart home (tránh "mở youtube" bị nhầm thành smart home)
+    for kw in APP_ACTION_KEYWORDS:
+        if kw in text_lower:
+            return IntentCategory.APP_ACTION
+
+    # 3. Smart Home — có keyword thiết bị
     for kw in SMART_HOME_KEYWORDS:
         if kw in text_lower:
             return IntentCategory.SMART_HOME
@@ -227,7 +299,12 @@ def classify_intent(text: str) -> IntentCategory:
         if re.search(pattern, text_lower):
             return IntentCategory.COMPLIMENT
 
-    # 9. Default → general chat
+    # 9. Location query
+    for pattern in LOCATION_PATTERNS:
+        if re.search(pattern, text_lower):
+            return IntentCategory.LOCATION_QUERY
+
+    # 10. Default → general chat
     return IntentCategory.GENERAL_CHAT
 
 
@@ -325,6 +402,7 @@ async def handle_general_chat(
     text: str,
     user_id: str,
     groq: GroqClient | None = None,
+    location_context: str | None = None,
 ) -> str:
     """Hội thoại tự do — dùng LLM với timeout 3s."""
     import asyncio
@@ -332,8 +410,13 @@ async def handle_general_chat(
     memory = _get_memory(user_id)
     memory.add("user", text)
 
+    # Build system prompt — inject vị trí nếu có
+    system_prompt = SIRI_SYSTEM_PROMPT
+    if location_context:
+        system_prompt += f"\n\nTHÔNG TIN VỊ TRÍ HIỆN TẠI:\n{location_context}\n(Dùng thông tin này khi người dùng hỏi về vị trí, địa điểm, hoặc chỉ đường)"
+
     messages = [
-        {"role": "system", "content": SIRI_SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
     ]
     messages.extend(memory.get_history())
 
@@ -380,15 +463,46 @@ async def process(
     user_input: str,
     user_id: str,
     groq: GroqClient | None = None,
+    user_location: dict | None = None,
 ) -> SiriResponse:
     """
     Entry point chính — xử lý mọi input từ user.
+
+    Args:
+        user_input: Câu nói của user
+        user_id: ID user
+        groq: Groq client (optional)
+        user_location: {"lat": float, "lng": float} từ GPS frontend
 
     Returns:
         SiriResponse với text trả lời + metadata.
     """
     category = classify_intent(user_input)
     logger.info("[SIRI] Input: '%s' → Category: %s", user_input[:60], category.value)
+
+    # Build location context 1 lần duy nhất (dùng chung cho nhiều handler)
+    location_context = None
+    if user_location and user_location.get("lat") and user_location.get("lng"):
+        try:
+            from src.core.location.geocoder import format_location_context
+            location_context = format_location_context(
+                user_location["lat"], user_location["lng"]
+            )
+            logger.info("[SIRI] Location: %s", location_context[:80])
+        except Exception as e:
+            logger.warning("[SIRI] Geocode failed: %s", str(e)[:100])
+
+    if category == IntentCategory.LOCATION_QUERY:
+        if location_context:
+            return SiriResponse(
+                text=f"📍 {location_context}",
+                category=category,
+            )
+        else:
+            return SiriResponse(
+                text="Xin lỗi, tôi chưa nhận được vị trí GPS của bạn. Hãy cho phép truy cập vị trí trong trình duyệt nhé!",
+                category=category,
+            )
 
     if category == IntentCategory.TIME_QUERY:
         return SiriResponse(
@@ -440,8 +554,8 @@ async def process(
             is_smart_home=True,
         )
 
-    # General chat → LLM (timeout 3s)
-    answer = await handle_general_chat(user_input, user_id, groq)
+    # General chat → LLM (timeout 3s) — với location context
+    answer = await handle_general_chat(user_input, user_id, groq, location_context=location_context)
     return SiriResponse(
         text=answer,
         category=category,

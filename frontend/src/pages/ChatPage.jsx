@@ -1,20 +1,32 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import api from '../api/client';
+import api, { confirmCommand } from '../api/client';
 import useStore from '../store/useStore';
 import VoiceOrb from '../components/VoiceOrb';
 import './ChatPage.css';
 
-const SUGGESTIONS = [
+// Suggestions chia theo role
+const OWNER_SUGGESTIONS = [
   { icon: '💡', text: 'Bật đèn phòng ngủ' },
   { icon: '🌡', text: 'Nhiệt độ phòng' },
   { icon: '🔒', text: 'Khóa cửa' },
   { icon: '🕐', text: 'Mấy giờ rồi' },
-  { icon: '👋', text: 'Xin chào' },
+  { icon: '❄️', text: 'Tắt điều hoà' },
   { icon: '❓', text: 'Bạn là ai' },
+  { icon: '📞', text: 'Gọi cho 0901234567' },
+  { icon: '💙', text: 'Mở Zalo' },
+  { icon: '🎵', text: 'Mở Spotify' },
+  { icon: '🌐', text: 'Tìm kiếm thời tiết hôm nay' },
+];
+
+const GUEST_SUGGESTIONS = [
+  { icon: '💡', text: 'Bật đèn phòng khách' },
+  { icon: '🌡', text: 'Nhiệt độ phòng' },
+  { icon: '🕐', text: 'Mấy giờ rồi' },
+  { icon: '👋', text: 'Xin chào' },
 ];
 
 export default function ChatPage() {
-  const { messages, addMessage } = useStore();
+  const { messages, addMessage, roles, pendingConfirm, setPendingConfirm, location, requestLocation } = useStore();
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [speakText, setSpeakText] = useState('');
@@ -22,9 +34,17 @@ export default function ChatPage() {
   const [mode, setMode] = useState('voice');
   const historyEndRef = useRef(null);
 
+  const isOwner = roles.includes('owner');
+  const SUGGESTIONS = isOwner ? OWNER_SUGGESTIONS : GUEST_SUGGESTIONS;
+
   useEffect(() => {
     historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Xin quyền GPS khi mount
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
 
   const sendMessage = useCallback(async (text) => {
     if (!text.trim()) return;
@@ -33,23 +53,54 @@ export default function ChatPage() {
     setInput('');
     setIsThinking(true);
     setLastResponse(null);
+    setPendingConfirm(null);
 
     try {
-      const { data } = await api.post('/chat', { message: text.trim() });
+      const payload = { message: text.trim() };
+      // Đính kèm vị trí GPS nếu có
+      if (location) {
+        payload.lat = location.lat;
+        payload.lng = location.lng;
+      }
+      const { data } = await api.post('/chat', payload);
       const aiMsg = {
         role: 'ai',
         text: data.response,
         success: data.success,
         category: data.category || 'general',
         command: data.command,
+        requires_confirmation: data.requires_confirmation,
+        request_id: data.request_id,
       };
       addMessage(aiMsg);
       setLastResponse(aiMsg);
       setSpeakText(data.response);
+
+      // Nếu cần xác nhận → lưu pending
+      if (data.requires_confirmation && data.request_id) {
+        setPendingConfirm({
+          request_id: data.request_id,
+          command: data.command,
+          message: data.response,
+        });
+      }
+
+      // App Action: nếu server đã thực thi → KHÔNG mở tab mới
+      // Chỉ fallback window.open nếu server trả web_url nhưng chưa execute
+      if (data.command?.data?.web_url && !data.command?.data?.executed_on_server) {
+        const webUrl = data.command.data.web_url;
+        if (webUrl && !data.command.data?.requires_native) {
+          setTimeout(() => {
+            window.open(webUrl, '_blank');
+          }, 600);
+        }
+      }
     } catch (err) {
       const errMsg = {
         role: 'ai',
-        text: 'Có lỗi kết nối. Vui lòng thử lại.',
+        text: err.response?.status === 401
+          ? 'Phiên đăng nhập đã hết hạn. Đang chuyển về trang đăng nhập...'
+          : 'Có lỗi kết nối. Vui lòng thử lại.',
         success: false,
       };
       addMessage(errMsg);
@@ -57,7 +108,30 @@ export default function ChatPage() {
     } finally {
       setIsThinking(false);
     }
-  }, [addMessage]);
+  }, [addMessage, setPendingConfirm]);
+
+  const handleConfirm = useCallback(async (confirmed) => {
+    if (!pendingConfirm) return;
+    setIsThinking(true);
+
+    try {
+      const data = await confirmCommand(pendingConfirm.request_id, confirmed);
+      const msg = {
+        role: 'ai',
+        text: data.response,
+        success: data.success,
+        category: 'smart_home',
+      };
+      addMessage(msg);
+      setLastResponse(msg);
+      setSpeakText(data.response);
+    } catch (err) {
+      addMessage({ role: 'ai', text: 'Lỗi xác nhận. Thử lại.', success: false });
+    } finally {
+      setPendingConfirm(null);
+      setIsThinking(false);
+    }
+  }, [pendingConfirm, addMessage, setPendingConfirm]);
 
   const handleVoiceResult = useCallback((text) => {
     sendMessage(text);
@@ -83,11 +157,12 @@ export default function ChatPage() {
       thanks: '💖 Cảm ơn',
       goodbye: '👋 Tạm biệt',
       compliment: '🥰 Khen ngợi',
+      location_query: '📍 Vị trí',
+      app_action: '⚙️ Ứng dụng',
     };
     return labels[cat] || '💬 Trả lời';
   };
 
-  // Only show history messages (skip welcome + last shown response)
   const historyMessages = messages.filter(m => m.id !== 'welcome').slice(0, -2);
 
   return (
@@ -137,8 +212,23 @@ export default function ChatPage() {
           </div>
         )}
 
+        {/* ── Confirmation Modal ─────────────── */}
+        {pendingConfirm && !isThinking && (
+          <div className="confirm-modal">
+            <p className="confirm-modal__text">⚠️ {pendingConfirm.message}</p>
+            <div className="confirm-modal__actions">
+              <button className="confirm-btn confirm-btn--yes" onClick={() => handleConfirm(true)}>
+                ✅ Xác nhận
+              </button>
+              <button className="confirm-btn confirm-btn--no" onClick={() => handleConfirm(false)}>
+                ❌ Huỷ bỏ
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Suggestions */}
-        {!isThinking && !lastResponse && (
+        {!isThinking && !lastResponse && !pendingConfirm && (
           <div className="siri-suggestions">
             {SUGGESTIONS.map((s, i) => (
               <button key={i} className="siri-chip"
@@ -149,8 +239,8 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Show suggestions again after response */}
-        {lastResponse && !isThinking && (
+        {/* Suggestions lại sau response */}
+        {lastResponse && !isThinking && !pendingConfirm && (
           <div className="siri-suggestions" style={{ marginTop: 8 }}>
             {SUGGESTIONS.slice(0, 4).map((s, i) => (
               <button key={i} className="siri-chip"

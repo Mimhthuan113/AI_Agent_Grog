@@ -302,3 +302,63 @@
   .siri-suggestions { padding: 8px 12px; }
   .siri-chip { font-size: 12px; padding: 6px 12px; }
 }
+
+/* ── Confirmation Modal ─────────────────────── */
+
+.confirm-modal {
+  max-width: 420px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 20px 24px;
+  border-radius: 20px;
+  background: rgba(255, 165, 0, 0.06);
+  border: 1px solid rgba(255, 165, 0, 0.2);
+  backdrop-filter: blur(20px);
+  text-align: center;
+  animation: responseIn 0.4s ease;
+}
+
+.confirm-modal__text {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.confirm-modal__actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.confirm-btn {
+  padding: 10px 24px;
+  border-radius: 14px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.confirm-btn--yes {
+  background: linear-gradient(135deg, #34c759, #30d158);
+  color: white;
+  box-shadow: 0 2px 12px rgba(52, 199, 89, 0.3);
+}
+
+.confirm-btn--yes:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 20px rgba(52, 199, 89, 0.4);
+}
+
+.confirm-btn--no {
+  background: rgba(255, 69, 58, 0.12);
+  color: #ff453a;
+  border: 1px solid rgba(255, 69, 58, 0.3);
+}
+
+.confirm-btn--no:hover {
+  background: rgba(255, 69, 58, 0.2);
+  transform: scale(1.05);
+}

@@ -8,6 +8,7 @@ Dac diem:
 - Timeout protection
 - Response validation
 - Khong lo API key trong log
+- Langfuse tracing (optional — graceful degradation)
 """
 
 from __future__ import annotations
@@ -52,6 +53,21 @@ class GroqClient:
         self._timeout = settings.groq_timeout
         self._max_retries = 3
 
+        # Langfuse tracing (optional)
+        self._langfuse = None
+        try:
+            if (hasattr(settings, 'langfuse_public_key') and
+                    settings.langfuse_public_key):
+                from langfuse import Langfuse
+                self._langfuse = Langfuse(
+                    public_key=settings.langfuse_public_key,
+                    secret_key=settings.langfuse_secret_key,
+                    host=settings.langfuse_host or "https://cloud.langfuse.com",
+                )
+                logger.info("[GROQ] Langfuse tracing ENABLED")
+        except Exception as e:
+            logger.info("[GROQ] Langfuse not available: %s", str(e)[:100])
+
     def chat(
         self,
         messages: list[dict],
@@ -92,13 +108,24 @@ class GroqClient:
                     payload["model"], usage, latency,
                 )
 
-                return GroqResponse(
+                response = GroqResponse(
                     content=content,
                     model=payload["model"],
                     usage_tokens=usage,
                     latency_ms=latency,
                     success=True,
                 )
+
+                # Langfuse trace
+                self._trace_llm(
+                    messages=payload["messages"],
+                    response=content,
+                    model=payload["model"],
+                    tokens=usage,
+                    latency_ms=latency,
+                )
+
+                return response
 
             except urllib.error.HTTPError as e:
                 if e.code == 429 and attempt < self._max_retries:
@@ -144,6 +171,33 @@ class GroqClient:
             success=False,
             error="Max retries exceeded",
         )
+
+    def _trace_llm(
+        self,
+        messages: list[dict],
+        response: str,
+        model: str,
+        tokens: int,
+        latency_ms: int,
+    ) -> None:
+        """Ghi trace vào Langfuse (nếu có). Fail-safe — không ảnh hưởng LLM."""
+        if self._langfuse is None:
+            return
+        try:
+            trace = self._langfuse.trace(
+                name="groq-chat",
+                metadata={"model": model},
+            )
+            trace.generation(
+                name="llm-call",
+                model=model,
+                input=messages,
+                output=response,
+                usage={"total_tokens": tokens},
+                metadata={"latency_ms": latency_ms},
+            )
+        except Exception as e:
+            logger.debug("[GROQ] Langfuse trace failed: %s", str(e)[:100])
 
     def _call_api(self, payload: dict) -> dict:
         """Raw API call toi Groq."""
