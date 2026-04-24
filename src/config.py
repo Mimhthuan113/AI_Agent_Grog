@@ -87,6 +87,17 @@ class Settings(BaseSettings):
     # ── ENCRYPTION ─────────────────────────────────────────
     db_encryption_key: str = Field(default="", alias="DB_ENCRYPTION_KEY")
 
+    # ── GUEST ACCOUNT ─────────────────────────────────────
+    guest_username: str = Field(default="guest", alias="GUEST_USERNAME")
+    guest_password: str = Field(default="guest123", alias="GUEST_PASSWORD")
+
+    # ── LANGFUSE (LLM Tracing) ────────────────────────────
+    langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
+    langfuse_host: str = Field(
+        default="https://cloud.langfuse.com", alias="LANGFUSE_HOST"
+    )
+
     # ── RATE LIMITING ──────────────────────────────────────
     rate_limit_per_user_per_minute: int = Field(
         default=10, alias="RATE_LIMIT_PER_USER_PER_MINUTE"
@@ -111,12 +122,26 @@ class Settings(BaseSettings):
     )
     allow_plain_http: bool = Field(default=True, alias="ALLOW_PLAIN_HTTP")
 
+    # ── GOOGLE MAPS ────────────────────────────────────────
+    google_maps_api_key: str = Field(default="", alias="GOOGLE_MAPS_API_KEY")
+
+    # ── GOOGLE AUTH (OAuth2) ───────────────────────────────
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+
+    # ── ROLE MAPPING ───────────────────────────────────────
+    admin_emails: str = Field(default="tran.thuan@gmail.com", alias="ADMIN_EMAILS")
+
     # ── Computed Properties ────────────────────────────────
 
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS_ORIGINS string thành list."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def admin_emails_list(self) -> list[str]:
+        """Parse ADMIN_EMAILS string thành list email làm owner."""
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     @property
     def redis_url(self) -> str:

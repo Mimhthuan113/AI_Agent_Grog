@@ -46,6 +46,8 @@ class CurrentUser:
     session_id: str       # Session tracking
     token_id: str         # jti — dùng cho blacklist
     expires_at: datetime  # Thời điểm token hết hạn
+    display_name: str = ""  # Tên hiển thị
+    picture: str = ""       # URL avatar
 
 
 # ── Redis client singleton (lazy init) ─────────────────────
@@ -200,11 +202,13 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # ── Step 6: Build user context ─────────────────────────
+    # ── Step 6: Build user context ─────────────────────
     return CurrentUser(
         user_id=payload.get("sub", "unknown"),
         roles=payload.get("roles", []),
         session_id=payload.get("session", ""),
         token_id=jti,
         expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        display_name=payload.get("display_name", ""),
+        picture=payload.get("picture", ""),
     )

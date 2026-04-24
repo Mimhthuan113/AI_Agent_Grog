@@ -1,7 +1,10 @@
-import { useState } from 'react'
-import { login as apiLogin } from '../api/client'
+import { useState, useEffect, useRef } from 'react'
+import { login as apiLogin, googleLogin as apiGoogleLogin, getMe } from '../api/client'
 import useStore from '../store/useStore'
 import './LoginPage.css'
+
+// Google Client ID
+const GOOGLE_CLIENT_ID = '1024198635802-ke42fatp2odl6coh5ploporrd62qcnve.apps.googleusercontent.com'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('admin')
@@ -9,6 +12,46 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const setAuth = useStore(s => s.setAuth)
+  const googleBtnRef = useRef(null)
+
+  // Load Google Identity Services script
+  useEffect(() => {
+    // Kiểm tra script đã load chưa
+    if (window.google?.accounts?.id) {
+      initGoogleButton()
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = () => initGoogleButton()
+    document.head.appendChild(script)
+
+    return () => {
+      // Cleanup nếu cần
+    }
+  }, [])
+
+  const initGoogleButton = () => {
+    if (!window.google?.accounts?.id || !googleBtnRef.current) return
+
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCallback,
+      auto_select: false,
+    })
+
+    window.google.accounts.id.renderButton(googleBtnRef.current, {
+      theme: 'filled_black',
+      shape: 'pill',
+      size: 'large',
+      width: 310,
+      text: 'signin_with',
+      locale: 'vi',
+    })
+  }
 
   const handleLogin = async () => {
     setError('')
@@ -18,6 +61,20 @@ export default function LoginPage() {
       setAuth({ user_id: data.user_id }, data.access_token)
     } catch (e) {
       setError(e.response?.data?.detail || 'Không kết nối được server')
+    }
+    setLoading(false)
+  }
+
+  const handleGoogleCallback = async (response) => {
+    setError('')
+    setLoading(true)
+    try {
+      const data = await apiGoogleLogin(response.credential)
+      // Lấy roles từ /auth/me
+      const me = await getMe()
+      setAuth(me, data.access_token)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Đăng nhập Google thất bại')
     }
     setLoading(false)
   }
@@ -40,8 +97,9 @@ export default function LoginPage() {
 
         <div className="login-form">
           <div className="input-group">
-            <label>Username</label>
+            <label htmlFor="login-username">Username</label>
             <input
+              id="login-username"
               value={username}
               onChange={e => setUsername(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
@@ -49,8 +107,9 @@ export default function LoginPage() {
             />
           </div>
           <div className="input-group">
-            <label>Password</label>
+            <label htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -64,6 +123,16 @@ export default function LoginPage() {
           <button className="login-btn" onClick={handleLogin} disabled={loading}>
             {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </button>
+
+          {/* ── Divider ─────────────────────────── */}
+          <div className="login-divider">
+            <span className="login-divider__line" />
+            <span className="login-divider__text">hoặc</span>
+            <span className="login-divider__line" />
+          </div>
+
+          {/* ── Google Sign-In (native GIS) ────── */}
+          <div className="google-login-wrapper" ref={googleBtnRef} />
         </div>
       </div>
     </div>
