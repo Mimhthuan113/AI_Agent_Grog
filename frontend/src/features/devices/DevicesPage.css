@@ -1,0 +1,109 @@
+.devices-page {
+  padding: var(--space-5) var(--space-4) var(--space-6);
+  max-width: var(--container-wide);
+  margin: 0 auto;
+}
+
+.devices-page__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.devices-page__title {
+  font: var(--text-display-lg);
+  color: var(--text-primary);
+}
+
+.devices-page__sub {
+  font: var(--text-caption);
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ── Grid ────────────────────────────────── */
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+
+@media (min-width: 768px) {
+  .devices-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-4);
+  }
+}
+
+/* ── Device card ─────────────────────────── */
+.device-card {
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 168px;
+}
+
+.device-card__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  background: linear-gradient(135deg,
+    rgba(124, 92, 255, 0.18),
+    rgba(255, 111, 168, 0.10));
+  border: 1px solid var(--border-brand);
+}
+.device-card__icon--light    { background: linear-gradient(135deg, rgba(255,180,84,0.20), rgba(255,180,84,0.06)); border-color: rgba(255,180,84,0.40); }
+.device-card__icon--lock     { background: linear-gradient(135deg, rgba(61,217,214,0.20), rgba(61,217,214,0.06)); border-color: rgba(61,217,214,0.40); }
+.device-card__icon--climate  { background: linear-gradient(135deg, rgba(124,92,255,0.20), rgba(124,92,255,0.06)); border-color: rgba(124,92,255,0.40); }
+.device-card__icon--switch   { background: linear-gradient(135deg, rgba(124,92,255,0.16), rgba(255,111,168,0.08)); border-color: var(--border-brand); }
+
+.device-card__name {
+  font: var(--text-h3);
+  color: var(--text-primary);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-card__entity {
+  font: var(--text-caption);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 11px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-card__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+/* ── Skeleton loading ───────────────────── */
+.devices-page__skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+
+.device-skeleton {
+  height: 168px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(110deg,
+    var(--bg-glass) 30%,
+    var(--bg-hover) 50%,
+    var(--bg-glass) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+  border: 1px solid var(--border-subtle);
+}

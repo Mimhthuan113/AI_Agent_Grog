@@ -1,0 +1,106 @@
+.login {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.login__card {
+  width: 100%;
+  padding: var(--space-8) var(--space-6) var(--space-6);
+  text-align: center;
+}
+
+/* ── Orb (signature) ─────────────────────── */
+.login__orb-wrap {
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.login__orb {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,
+    var(--brand-aurora-1),
+    var(--brand-aurora-2),
+    var(--brand-aurora-3));
+  display: grid;
+  place-items: center;
+  position: relative;
+  box-shadow: var(--shadow-glow);
+  animation: pulseSoft 3s ease-in-out infinite;
+}
+.login__orb::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px solid var(--border-brand);
+  animation: pulseGlow 2.4s ease-out infinite;
+}
+
+.login__orb-inner {
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%,
+    rgba(255,255,255,0.55),
+    rgba(255,255,255,0.05) 60%);
+  filter: blur(2px);
+}
+
+/* ── Heading ─────────────────────────────── */
+.login__title {
+  font: var(--text-display-xl);
+  margin-bottom: var(--space-1);
+}
+
+.login__subtitle {
+  font: var(--text-body);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-6);
+}
+
+/* ── Form ────────────────────────────────── */
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  text-align: left;
+}
+
+/* ── Divider ────────────────────────────── */
+.login__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+.login__divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+.login__divider-text {
+  font: var(--text-caption);
+  color: var(--text-muted);
+  text-transform: lowercase;
+}
+
+/* ── Google button wrapper ───────────────── */
+.login__google {
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+}
+
+/* ── Hint dưới card ─────────────────────── */
+.login__hint {
+  font: var(--text-caption);
+  color: var(--text-muted);
+  text-align: center;
+}

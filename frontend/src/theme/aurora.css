@@ -1,0 +1,137 @@
+/* ============================================================
+   AURORA SIGNATURE — DNA RIÊNG CỦA AISHA
+   Background mesh chuyển động chậm 60s, không trùng với ai.
+   Dùng với class .aurora-canvas trên container fullscreen.
+   ============================================================ */
+
+.aurora-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora-canvas::before,
+.aurora-canvas::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+/* Layer 1: Tím chính chạy chéo từ góc trên trái */
+.aurora-canvas::before {
+  width: 70vmax;
+  height: 70vmax;
+  background: radial-gradient(circle at center,
+    var(--brand-aurora-1) 0%,
+    transparent 60%);
+  top: -25vmax;
+  left: -20vmax;
+  animation: auroraDrift1 var(--dur-aurora) ease-in-out infinite alternate;
+}
+
+/* Layer 2: Hồng đào vòng từ phải xuống */
+.aurora-canvas::after {
+  width: 60vmax;
+  height: 60vmax;
+  background: radial-gradient(circle at center,
+    var(--brand-aurora-2) 0%,
+    transparent 60%);
+  top: 20vmax;
+  right: -25vmax;
+  animation: auroraDrift2 var(--dur-aurora) ease-in-out infinite alternate;
+}
+
+/* Layer 3 (optional 3rd dot — teal phía dưới) */
+.aurora-canvas .aurora-dot-3 {
+  position: absolute;
+  width: 50vmax;
+  height: 50vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,
+    var(--brand-aurora-3) 0%,
+    transparent 60%);
+  filter: blur(120px);
+  opacity: 0.35;
+  bottom: -20vmax;
+  left: 30%;
+  animation: auroraDrift3 var(--dur-aurora) ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Light mode → giảm opacity để background sáng vẫn đọc text được */
+[data-theme="light"] .aurora-canvas::before,
+[data-theme="light"] .aurora-canvas::after,
+[data-theme="light"] .aurora-canvas .aurora-dot-3 {
+  opacity: 0.18;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .aurora-canvas::before,
+  :root:not([data-theme="dark"]) .aurora-canvas::after,
+  :root:not([data-theme="dark"]) .aurora-canvas .aurora-dot-3 {
+    opacity: 0.18;
+  }
+}
+
+@keyframes auroraDrift1 {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(8vmax, 4vmax) scale(1.1); }
+  100% { transform: translate(-4vmax, 8vmax) scale(0.95); }
+}
+
+@keyframes auroraDrift2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(-6vmax, -3vmax) scale(1.08); }
+  100% { transform: translate(4vmax, 6vmax) scale(0.92); }
+}
+
+@keyframes auroraDrift3 {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(-5vmax, -8vmax) scale(1.15); }
+  100% { transform: translate(8vmax, 0) scale(0.9); }
+}
+
+/* Reduced motion → static gradient, no animation */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-canvas::before,
+  .aurora-canvas::after,
+  .aurora-canvas .aurora-dot-3 {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   AURORA TEXT GRADIENT — dùng cho logo + display headings
+   Class: .aurora-text
+   ============================================================ */
+.aurora-text {
+  background: linear-gradient(135deg,
+    var(--brand-aurora-1) 0%,
+    var(--brand-aurora-2) 50%,
+    var(--brand-aurora-3) 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ============================================================
+   GLASS SURFACE — frosted glass cho card/header/nav
+   ============================================================ */
+.glass-surface {
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-glass)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(180%);
+  border: 1px solid var(--border-subtle);
+}
+
+.glass-elevated {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+}

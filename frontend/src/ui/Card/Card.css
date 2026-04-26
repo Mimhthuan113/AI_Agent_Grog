@@ -1,0 +1,106 @@
+.ai-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  position: relative;
+  transition: border-color var(--dur-fast) var(--ease-aurora),
+              transform     var(--dur-fast) var(--ease-aurora),
+              box-shadow    var(--dur-fast) var(--ease-aurora);
+}
+
+.ai-card--padded { padding: var(--space-4); }
+
+/* ── Variants ─────────────────────────── */
+.ai-card--flat {
+  background: var(--bg-surface);
+}
+
+.ai-card--glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-glass)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(180%);
+}
+
+.ai-card--elevated {
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+}
+
+.ai-card--aurora {
+  background: var(--bg-surface);
+  position: relative;
+  overflow: hidden;
+}
+.ai-card--aurora::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    var(--brand-aurora-1),
+    var(--brand-aurora-2),
+    var(--brand-aurora-3));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Interactive (hover lift) ─────────── */
+.ai-card--interactive {
+  cursor: pointer;
+}
+.ai-card--interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-brand);
+  box-shadow: var(--shadow-soft);
+}
+.ai-card--interactive:active {
+  transform: translateY(0);
+}
+
+/* ── Header / Body / Footer ──────────── */
+.ai-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.ai-card__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ai-card__title {
+  font: var(--text-h3);
+  color: var(--text-primary);
+}
+.ai-card__subtitle {
+  font: var(--text-caption);
+  color: var(--text-secondary);
+}
+.ai-card__action {
+  flex-shrink: 0;
+}
+.ai-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ai-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}

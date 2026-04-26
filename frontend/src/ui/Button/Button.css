@@ -1,0 +1,112 @@
+.ai-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  font: var(--text-body);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition:
+    transform var(--dur-fast) var(--ease-snap),
+    background var(--dur-fast) var(--ease-aurora),
+    border-color var(--dur-fast) var(--ease-aurora),
+    box-shadow var(--dur-fast) var(--ease-aurora),
+    color var(--dur-fast) var(--ease-aurora);
+}
+
+.ai-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.ai-btn:disabled,
+.ai-btn.is-loading {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ai-btn--full { width: 100%; }
+
+/* ── Sizes ───────────────────────────── */
+.ai-btn--sm {
+  padding: 6px 12px;
+  font-size: 12px;
+  height: 32px;
+}
+.ai-btn--md {
+  padding: 10px 18px;
+  font-size: 14px;
+  height: 42px;
+}
+.ai-btn--lg {
+  padding: 14px 24px;
+  font-size: 16px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+}
+
+/* ── Variant: Primary (aurora gradient) ─ */
+.ai-btn--primary {
+  background: linear-gradient(135deg,
+    var(--brand-aurora-1) 0%,
+    var(--brand-aurora-2) 100%);
+  color: var(--text-on-brand);
+  box-shadow: var(--shadow-soft);
+}
+.ai-btn--primary:hover:not(:disabled) {
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+/* ── Variant: Secondary (glass) ───────── */
+.ai-btn--secondary {
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.ai-btn--secondary:hover:not(:disabled) {
+  border-color: var(--border-brand);
+  background: var(--bg-hover);
+}
+
+/* ── Variant: Ghost ────────────────────── */
+.ai-btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.ai-btn--ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Variant: Danger ───────────────────── */
+.ai-btn--danger {
+  background: var(--state-danger);
+  color: var(--text-on-brand);
+}
+.ai-btn--danger:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--state-danger) 85%, white);
+}
+
+/* ── Icon + label ──────────────────────── */
+.ai-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.1em;
+}
+.ai-btn__label { display: inline-flex; }
+
+/* ── Spinner ───────────────────────────── */
+.ai-btn__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}

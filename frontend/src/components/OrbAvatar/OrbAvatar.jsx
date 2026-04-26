@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { getApiUrl, isCapacitorNative } from '../api/config';
-import './VoiceOrb.css';
+import { getApiUrl, isCapacitorNative } from '../../api/config';
+import './OrbAvatar.css';
 
 const STATES = {
   IDLE: 'idle',

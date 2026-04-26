@@ -1,0 +1,161 @@
+/* ============================================================
+   AISHA AURORA AI — DESIGN TOKENS v1
+   Single source of truth. KHÔNG hardcode màu/spacing trong page.
+   ============================================================ */
+
+:root {
+  /* ── Brand: 3 màu signature ─────────────────────── */
+  --brand-aurora-1: #7C5CFF;   /* tím điện — primary */
+  --brand-aurora-2: #FF6FA8;   /* hồng đào — secondary */
+  --brand-aurora-3: #3DD9D6;   /* lục lam — success/voice live */
+
+  /* ── State colors ───────────────────────────────── */
+  --state-success:  #3DD9D6;
+  --state-warn:     #FFB454;
+  --state-danger:   #FF5C7A;
+  --state-info:     #7C5CFF;
+
+  /* ── Typography stacks ──────────────────────────── */
+  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* ── Type scale (size / line-height / weight) ─── */
+  --text-display-xl: 700 36px/44px var(--font-display);
+  --text-display-lg: 700 28px/36px var(--font-display);
+  --text-h1:         700 22px/30px var(--font-display);
+  --text-h2:         600 18px/26px var(--font-display);
+  --text-h3:         600 16px/22px var(--font-body);
+  --text-body-lg:    400 16px/24px var(--font-body);
+  --text-body:       400 14px/22px var(--font-body);
+  --text-caption:    500 12px/18px var(--font-body);
+  --text-micro:      600 10px/14px var(--font-body);
+
+  /* ── Spacing scale (4-base) ─────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Border radius ──────────────────────────────── */
+  --radius-sm:   10px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ─────────────────────────────────────── */
+  --ease-aurora: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-snap:   cubic-bezier(0.5, 1.5, 0.4, 1);
+  --dur-instant: 100ms;
+  --dur-fast:    180ms;
+  --dur-base:    280ms;
+  --dur-slow:    480ms;
+  --dur-aurora:  60s;
+
+  /* ── Layout ─────────────────────────────────────── */
+  --container-chat: 720px;
+  --container-wide: 1024px;
+  --header-h: 56px;
+  --bottom-nav-h: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ── Glass effect ───────────────────────────────── */
+  --blur-glass: 24px;
+}
+
+/* ============================================================
+   THEME: DARK (mặc định — "Đêm sâu")
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-canvas:   #07070F;
+  --bg-surface:  #0F0F1E;
+  --bg-elevated: #161628;
+  --bg-input:    rgba(255, 255, 255, 0.06);
+  --bg-glass:    rgba(255, 255, 255, 0.04);
+  --bg-overlay:  rgba(7, 7, 15, 0.72);
+  --bg-hover:    rgba(255, 255, 255, 0.04);
+
+  --text-primary:   #F2F2F8;
+  --text-secondary: #A8A8C2;
+  --text-muted:     #5A5A78;
+  --text-inverse:   #07070F;
+  --text-on-brand:  #FFFFFF;
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-brand:  rgba(124, 92, 255, 0.45);
+
+  --shadow-soft:  0 4px 24px -8px rgba(124, 92, 255, 0.25);
+  --shadow-glow:  0 0 32px -4px rgba(124, 92, 255, 0.55);
+  --shadow-card:  0 8px 32px -12px rgba(0, 0, 0, 0.6);
+  --shadow-toast: 0 20px 40px -12px rgba(0, 0, 0, 0.8);
+}
+
+/* ============================================================
+   THEME: LIGHT ("Bình minh") — auto theo system
+   ============================================================ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --bg-canvas:   #FAFAFE;
+    --bg-surface:  #FFFFFF;
+    --bg-elevated: #FFFFFF;
+    --bg-input:    rgba(15, 15, 30, 0.04);
+    --bg-glass:    rgba(255, 255, 255, 0.72);
+    --bg-overlay:  rgba(15, 15, 30, 0.50);
+    --bg-hover:    rgba(15, 15, 30, 0.04);
+
+    --text-primary:   #0F0F1E;
+    --text-secondary: #4A4A6A;
+    --text-muted:     #8A8AA8;
+    --text-inverse:   #FFFFFF;
+    --text-on-brand:  #FFFFFF;
+
+    --border-subtle: rgba(15, 15, 30, 0.08);
+    --border-strong: rgba(15, 15, 30, 0.16);
+    --border-brand:  rgba(124, 92, 255, 0.35);
+
+    --shadow-soft:  0 4px 24px -8px rgba(124, 92, 255, 0.15);
+    --shadow-glow:  0 0 32px -4px rgba(124, 92, 255, 0.30);
+    --shadow-card:  0 8px 24px -12px rgba(15, 15, 30, 0.10);
+    --shadow-toast: 0 20px 40px -12px rgba(15, 15, 30, 0.18);
+  }
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-canvas:   #FAFAFE;
+  --bg-surface:  #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-input:    rgba(15, 15, 30, 0.04);
+  --bg-glass:    rgba(255, 255, 255, 0.72);
+  --bg-overlay:  rgba(15, 15, 30, 0.50);
+  --bg-hover:    rgba(15, 15, 30, 0.04);
+
+  --text-primary:   #0F0F1E;
+  --text-secondary: #4A4A6A;
+  --text-muted:     #8A8AA8;
+  --text-inverse:   #FFFFFF;
+  --text-on-brand:  #FFFFFF;
+
+  --border-subtle: rgba(15, 15, 30, 0.08);
+  --border-strong: rgba(15, 15, 30, 0.16);
+  --border-brand:  rgba(124, 92, 255, 0.35);
+
+  --shadow-soft:  0 4px 24px -8px rgba(124, 92, 255, 0.15);
+  --shadow-glow:  0 0 32px -4px rgba(124, 92, 255, 0.30);
+  --shadow-card:  0 8px 24px -12px rgba(15, 15, 30, 0.10);
+  --shadow-toast: 0 20px 40px -12px rgba(15, 15, 30, 0.18);
+}

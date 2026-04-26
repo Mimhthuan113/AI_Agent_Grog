@@ -1,0 +1,105 @@
+.ai-toast-stack {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  pointer-events: none;
+  padding: var(--space-3);
+}
+
+.ai-toast-stack--top-center {
+  top: max(var(--space-3), env(safe-area-inset-top, 0));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 2 * var(--space-4)));
+}
+.ai-toast-stack--top-right {
+  top: max(var(--space-3), env(safe-area-inset-top, 0));
+  right: var(--space-3);
+  width: min(380px, calc(100% - 2 * var(--space-4)));
+}
+.ai-toast-stack--bottom-center {
+  bottom: calc(var(--bottom-nav-h) + var(--space-3) + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 2 * var(--space-4)));
+}
+
+.ai-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-toast);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  animation: scaleIn var(--dur-base) var(--ease-snap) both;
+  min-width: 240px;
+}
+
+.ai-toast__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.ai-toast__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-toast__title {
+  font: var(--text-h3);
+  color: var(--text-primary);
+}
+
+.ai-toast__msg {
+  font: var(--text-body);
+  color: var(--text-secondary);
+}
+
+.ai-toast__close {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all var(--dur-fast) var(--ease-aurora);
+}
+.ai-toast__close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Tones ────────────────────────────── */
+.ai-toast--success .ai-toast__icon {
+  background: rgba(61, 217, 214, 0.18);
+  color: var(--state-success);
+}
+.ai-toast--warn .ai-toast__icon {
+  background: rgba(255, 180, 84, 0.18);
+  color: var(--state-warn);
+}
+.ai-toast--danger .ai-toast__icon {
+  background: rgba(255, 92, 122, 0.18);
+  color: var(--state-danger);
+}
+.ai-toast--info .ai-toast__icon {
+  background: rgba(124, 92, 255, 0.18);
+  color: var(--state-info);
+}

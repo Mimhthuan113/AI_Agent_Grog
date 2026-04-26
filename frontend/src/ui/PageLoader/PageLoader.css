@@ -1,0 +1,134 @@
+.page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  text-align: center;
+  animation: fadeIn var(--dur-base) var(--ease-aurora) both;
+}
+
+.page-loader--fullscreen {
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+}
+
+.page-loader--inline {
+  min-height: 320px;
+  padding: var(--space-12) var(--space-4);
+  flex: 1;
+}
+
+/* ── Stage: orb + orbit ───────────────────── */
+.page-loader__stage {
+  position: relative;
+  width: 96px;
+  height: 96px;
+}
+
+/* Core orb */
+.page-loader__core {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,
+    var(--brand-aurora-1) 0%,
+    var(--brand-aurora-2) 50%,
+    var(--brand-aurora-3) 100%);
+  box-shadow: var(--shadow-glow);
+  animation: pulseSoft 1.6s ease-in-out infinite;
+  display: grid;
+  place-items: center;
+}
+
+.page-loader__core-inner {
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%,
+    rgba(255,255,255,0.55),
+    rgba(255,255,255,0.05) 60%);
+  filter: blur(2px);
+}
+
+/* Orbit container — quay tròn mang theo 3 satellite */
+.page-loader__orbit {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: spin 3.6s linear infinite;
+}
+
+.page-loader__satellite {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  filter: blur(0.5px);
+  box-shadow: 0 0 12px currentColor;
+}
+
+.page-loader__satellite--1 {
+  top: 0;
+  left: 50%;
+  margin-left: -5px;
+  background: var(--brand-aurora-1);
+  color: var(--brand-aurora-1);
+}
+.page-loader__satellite--2 {
+  bottom: 12%;
+  right: 4%;
+  background: var(--brand-aurora-2);
+  color: var(--brand-aurora-2);
+}
+.page-loader__satellite--3 {
+  bottom: 12%;
+  left: 4%;
+  background: var(--brand-aurora-3);
+  color: var(--brand-aurora-3);
+}
+
+/* ── Label ────────────────────────────────── */
+.page-loader__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--text-body);
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.page-loader__dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 2px;
+}
+.page-loader__dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  animation: loaderDot 1.2s ease-in-out infinite;
+}
+.page-loader__dots i:nth-child(1) { animation-delay: 0.0s; }
+.page-loader__dots i:nth-child(2) { animation-delay: 0.2s; }
+.page-loader__dots i:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes loaderDot {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40%           { opacity: 1;   transform: translateY(-3px); }
+}
+
+/* Reduced motion → tắt orbit + dots */
+@media (prefers-reduced-motion: reduce) {
+  .page-loader__orbit,
+  .page-loader__core,
+  .page-loader__dots i {
+    animation: none !important;
+  }
+}
