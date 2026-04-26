@@ -1,6 +1,7 @@
 import useStore from '../store/useStore'
 import { Pill } from '../ui'
 import { formatDisplayName } from '../lib/format'
+import useTheme from '../hooks/useTheme'
 import './AppShell.css'
 
 /**
@@ -19,7 +20,7 @@ export default function AppShell({ children }) {
   const picture = useStore(s => s.picture)
 
   const isOwner = roles.includes('owner')
-  const { theme, cyceTheme } = useTheme()
+  const { theme, toggleTheme } = useTheme()
 
   return (
     <div className="app-shell">
