@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import api, { confirmCommand } from '../api/client';
+import { streamMessage, confirmCommand } from '../api/client';
 import useStore from '../store/useStore';
 import VoiceOrb from '../components/VoiceOrb';
+import useWakeWord from '../hooks/useWakeWord';
 import './ChatPage.css';
 
 // Suggestions chia theo role
@@ -26,13 +27,49 @@ const GUEST_SUGGESTIONS = [
 ];
 
 export default function ChatPage() {
-  const { messages, addMessage, roles, pendingConfirm, setPendingConfirm, location, requestLocation } = useStore();
+  const {
+    messages, addMessage, updateLastMessage,
+    roles, pendingConfirm, setPendingConfirm,
+    location, requestLocation,
+  } = useStore();
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [speakText, setSpeakText] = useState('');
   const [lastResponse, setLastResponse] = useState(null);
   const [mode, setMode] = useState('voice');
   const historyEndRef = useRef(null);
+
+  // Wake-word "Hey Aisha"
+  const voiceOrbRef = useRef(null);
+  const [voiceState, setVoiceState] = useState('idle');
+  const [wakeEnabled, setWakeEnabled] = useState(() => {
+    return localStorage.getItem('aisha:wakeword') === '1';
+  });
+  const toggleWake = useCallback(() => {
+    setWakeEnabled((v) => {
+      const next = !v;
+      localStorage.setItem('aisha:wakeword', next ? '1' : '0');
+      return next;
+    });
+  }, []);
+
+  const handleWake = useCallback(() => {
+    // Tự chuyển sang mode voice nếu đang ở text (giúp orb hiển thị)
+    if (mode !== 'voice') setMode('voice');
+    // Defer 1 frame để VoiceOrb mount xong nếu vừa đổi mode
+    setTimeout(() => {
+      voiceOrbRef.current?.startListening?.();
+    }, 50);
+  }, [mode]);
+
+  // Pause wake-word khi orb đang nghe / đang nói (tránh tranh chấp mic)
+  // hoặc khi đang xử lý request.
+  const wakePaused = voiceState === 'listening' || voiceState === 'speaking' || isThinking;
+  const { active: wakeActive, supported: wakeSupported, error: wakeError } = useWakeWord({
+    enabled: wakeEnabled,
+    paused: wakePaused,
+    onWake: handleWake,
+  });
 
   const isOwner = roles.includes('owner');
   const SUGGESTIONS = isOwner ? OWNER_SUGGESTIONS : GUEST_SUGGESTIONS;
@@ -46,69 +83,124 @@ export default function ChatPage() {
     requestLocation();
   }, [requestLocation]);
 
+  const abortRef = useRef(null);
+
   const sendMessage = useCallback(async (text) => {
     if (!text.trim()) return;
 
-    addMessage({ role: 'user', text: text.trim() });
+    // Nếu đang stream → hủy stream cũ trước khi mở mới
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch { /* ignore */ }
+      abortRef.current = null;
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const userText = text.trim();
+    addMessage({ role: 'user', text: userText });
     setInput('');
     setIsThinking(true);
     setLastResponse(null);
     setPendingConfirm(null);
 
+    // Thêm placeholder AI để stream cập nhật dần
+    addMessage({ role: 'ai', text: '', streaming: true, category: 'general_chat' });
+
+    let accumText = '';
+    let currentCategory = 'general_chat';
+    let currentRequestId = null;
+
     try {
-      const payload = { message: text.trim() };
-      // Đính kèm vị trí GPS nếu có
-      if (location) {
-        payload.lat = location.lat;
-        payload.lng = location.lng;
-      }
-      const { data } = await api.post('/chat', payload);
-      const aiMsg = {
-        role: 'ai',
-        text: data.response,
-        success: data.success,
-        category: data.category || 'general',
-        command: data.command,
-        requires_confirmation: data.requires_confirmation,
-        request_id: data.request_id,
-      };
-      addMessage(aiMsg);
-      setLastResponse(aiMsg);
-      setSpeakText(data.response);
+      await streamMessage(userText, {
+        lat: location?.lat ?? null,
+        lng: location?.lng ?? null,
+        signal: controller.signal,
+        onMeta: (m) => {
+          currentCategory = m.category || 'general_chat';
+          currentRequestId = m.request_id || null;
+          // Có meta → bắt đầu render text dần, ẩn thinking dots
+          setIsThinking(false);
+          updateLastMessage({ category: currentCategory, request_id: currentRequestId });
+        },
+        onChunk: (piece) => {
+          if (!piece) return;
+          accumText += piece;
+          updateLastMessage({ text: accumText });
+          setLastResponse({
+            role: 'ai',
+            text: accumText,
+            category: currentCategory,
+            streaming: true,
+          });
+        },
+        onDone: (d) => {
+          const finalMsg = {
+            role: 'ai',
+            text: accumText,
+            success: d.success !== false,
+            category: currentCategory,
+            command: d.command,
+            requires_confirmation: !!d.requires_confirmation,
+            request_id: d.request_id || currentRequestId,
+            streaming: false,
+          };
+          updateLastMessage(finalMsg);
+          setLastResponse(finalMsg);
+          // Chỉ TTS khi response thành công và có nội dung
+          if (finalMsg.success && accumText) setSpeakText(accumText);
 
-      // Nếu cần xác nhận → lưu pending
-      if (data.requires_confirmation && data.request_id) {
-        setPendingConfirm({
-          request_id: data.request_id,
-          command: data.command,
-          message: data.response,
-        });
-      }
+          // Confirmation flow
+          if (d.requires_confirmation && d.request_id) {
+            setPendingConfirm({
+              request_id: d.request_id,
+              command: d.command,
+              message: accumText,
+            });
+          }
 
-      // App Action: nếu server đã thực thi → KHÔNG mở tab mới
-      // Chỉ fallback window.open nếu server trả web_url nhưng chưa execute
-      if (data.command?.data?.web_url && !data.command?.data?.executed_on_server) {
-        const webUrl = data.command.data.web_url;
-        if (webUrl && !data.command.data?.requires_native) {
-          setTimeout(() => {
-            window.open(webUrl, '_blank');
-          }, 600);
-        }
-      }
+          // App Action fallback web_url
+          if (d.command?.data?.web_url && !d.command?.data?.executed_on_server) {
+            const webUrl = d.command.data.web_url;
+            if (webUrl && !d.command.data?.requires_native) {
+              setTimeout(() => {
+                window.open(webUrl, '_blank');
+              }, 600);
+            }
+          }
+        },
+        onError: (err) => {
+          console.error('[Chat:Stream] error:', err);
+        },
+      });
     } catch (err) {
+      // AbortError khi user gửi tin mới → bỏ qua, không hiện lỗi
+      if (err?.name === 'AbortError' || controller.signal.aborted) return;
       const errMsg = {
         role: 'ai',
-        text: err.response?.status === 401
+        text: err?.status === 401
           ? 'Phiên đăng nhập đã hết hạn. Đang chuyển về trang đăng nhập...'
           : 'Có lỗi kết nối. Vui lòng thử lại.',
         success: false,
+        streaming: false,
+        category: currentCategory,
       };
-      addMessage(errMsg);
+      updateLastMessage(errMsg);
       setLastResponse(errMsg);
     } finally {
       setIsThinking(false);
+      // Chỉ clear khi controller này còn là current (không bị stream khác replace)
+      if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [addMessage, setPendingConfirm]);
+  }, [addMessage, updateLastMessage, setPendingConfirm, location]);
+
+  // Cleanup khi unmount: hủy stream nếu còn
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        try { abortRef.current.abort(); } catch { /* ignore */ }
+      }
+    };
+  }, []);
 
   const handleConfirm = useCallback(async (confirmed) => {
     if (!pendingConfirm) return;
@@ -125,7 +217,7 @@ export default function ChatPage() {
       addMessage(msg);
       setLastResponse(msg);
       setSpeakText(data.response);
-    } catch (err) {
+    } catch {
       addMessage({ role: 'ai', text: 'Lỗi xác nhận. Thử lại.', success: false });
     } finally {
       setPendingConfirm(null);
@@ -174,7 +266,24 @@ export default function ChatPage() {
           onClick={() => setMode('voice')}>🎙 Giọng nói</button>
         <button className={`mode-btn ${mode === 'text' ? 'active' : ''}`}
           onClick={() => setMode('text')}>⌨ Văn bản</button>
+        <button
+          className={`mode-btn wake-btn ${wakeEnabled ? 'active' : ''}`}
+          onClick={toggleWake}
+          title={
+            !wakeSupported
+              ? 'Browser không hỗ trợ wake-word (dùng Chrome/Edge)'
+              : wakeEnabled
+              ? `Wake-word ON${wakeActive ? ' · đang nghe "Hey Aisha"' : ''}`
+              : 'Bật để kích hoạt khi nói "Hey Aisha"'
+          }
+          disabled={!wakeSupported}
+        >
+          {wakeEnabled ? (wakeActive ? '👂' : '🟡') : '💤'} Hey Aisha
+        </button>
       </div>
+      {wakeEnabled && wakeError && (
+        <div className="wake-error">⚠ Wake-word: {wakeError}</div>
+      )}
 
       {/* ── Siri Center ───────────────────────── */}
       <div className="siri-center">
@@ -182,8 +291,10 @@ export default function ChatPage() {
         {/* Voice Orb */}
         {mode === 'voice' && (
           <VoiceOrb
+            ref={voiceOrbRef}
             onResult={handleVoiceResult}
             onSpeakEnd={handleSpeakEnd}
+            onStateChange={setVoiceState}
             isThinking={isThinking}
             speakText={speakText}
           />
@@ -199,11 +310,14 @@ export default function ChatPage() {
         )}
 
         {lastResponse && !isThinking && (
-          <div className="siri-response" key={lastResponse.text}>
-            <p className="siri-response__text">{lastResponse.text}</p>
+          <div className="siri-response">
+            <p className="siri-response__text">
+              {lastResponse.text}
+              {lastResponse.streaming && <span className="siri-cursor">▍</span>}
+            </p>
             <div className="siri-response__category">
               {getCategoryLabel(lastResponse.category)}
-              {lastResponse.success !== undefined && (
+              {!lastResponse.streaming && lastResponse.success !== undefined && (
                 <span className={`siri-response__status ${lastResponse.success ? 'ok' : 'fail'}`}>
                   {lastResponse.success ? '✓' : '✗'}
                 </span>

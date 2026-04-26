@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { getApiUrl, isCapacitorNative } from '../api/config';
 import './VoiceOrb.css';
 
 const STATES = {
@@ -8,7 +9,7 @@ const STATES = {
   SPEAKING: 'speaking',
 };
 
-export default function VoiceOrb({ onResult, onSpeakEnd, isThinking, speakText }) {
+function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakText }, ref) {
   const [state, setState] = useState(STATES.IDLE);
   const [transcript, setTranscript] = useState('');
   const [volume, setVolume] = useState(0);
@@ -17,15 +18,144 @@ export default function VoiceOrb({ onResult, onSpeakEnd, isThinking, speakText }
   const animFrameRef = useRef(null);
   const streamRef = useRef(null);
 
-  // ── Speech Recognition Setup ──────────────────
-  const startListening = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+  // Notify parent khi state đổi (để pause wake-word lúc listening/speaking)
+  useEffect(() => {
+    if (typeof onStateChange === 'function') onStateChange(state);
+  }, [state, onStateChange]);
+
+  // ── Audio Visualizer ──────────────────────────
+  // Define trước startListening để onstart/onend closure không truy cập TDZ
+  const startAudioVisualizer = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateVolume = () => {
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        setVolume(avg / 128);
+        animFrameRef.current = requestAnimationFrame(updateVolume);
+      };
+      updateVolume();
+    } catch (err) {
+      console.error('Microphone access error:', err);
+    }
+  }, []);
+
+  const stopAudioVisualizer = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setVolume(0);
+  }, []);
+
+  // ── Native Speech (Capacitor plugin) ──────────────
+  // Dùng cho APK Android — Web Speech API không có trong WebView nguyên bản
+  const nativeListenerRef = useRef(null);
+  const nativeFinalTextRef = useRef('');
+
+  const startNativeListening = useCallback(async () => {
+    let SpeechRecognition;
+    try {
+      ({ SpeechRecognition } = await import('@capacitor-community/speech-recognition'));
+    } catch (err) {
+      console.error('Plugin speech-recognition không cài:', err);
+      alert('Plugin speech-recognition không sẵn sàng.');
+      return;
+    }
+
+    // Permission check
+    try {
+      const perm = await SpeechRecognition.checkPermissions();
+      if (perm.permission !== 'granted') {
+        const req = await SpeechRecognition.requestPermissions();
+        if (req.permission !== 'granted') {
+          alert('Cần cấp quyền micro để nói với Aisha.');
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Permission error:', err);
+      return;
+    }
+
+    setState(STATES.LISTENING);
+    setTranscript('');
+    nativeFinalTextRef.current = '';
+    startAudioVisualizer();
+
+    // Đăng ký listener trước khi start
+    try {
+      nativeListenerRef.current = await SpeechRecognition.addListener(
+        'partialResults',
+        (data) => {
+          const text = data?.matches?.[0] || '';
+          if (text) {
+            nativeFinalTextRef.current = text;
+            setTranscript(text);
+          }
+        },
+      );
+    } catch (err) {
+      console.error('Listener error:', err);
+    }
+
+    try {
+      // start() block đến khi user dừng nói (~5s im lặng) hoặc được stop()
+      await SpeechRecognition.start({
+        language: 'vi-VN',
+        maxResults: 1,
+        prompt: '',
+        partialResults: true,
+        popup: false,
+      });
+    } catch (err) {
+      console.error('Native speech start error:', err);
+    } finally {
+      // Cleanup
+      if (nativeListenerRef.current) {
+        try { await nativeListenerRef.current.remove(); } catch { /* ignore */ }
+        nativeListenerRef.current = null;
+      }
+      stopAudioVisualizer();
+
+      const finalText = nativeFinalTextRef.current.trim();
+      if (finalText) {
+        setState(STATES.THINKING);
+        onResult(finalText);
+      } else {
+        setState(STATES.IDLE);
+      }
+    }
+  }, [onResult, startAudioVisualizer, stopAudioVisualizer]);
+
+  const stopNativeListening = useCallback(async () => {
+    try {
+      const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
+      await SpeechRecognition.stop();
+    } catch { /* ignore */ }
+  }, []);
+
+  // ── Web Speech (Chrome/Edge) ──────────────────────
+  const startWebListening = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
       alert('Trình duyệt không hỗ trợ nhận diện giọng nói. Hãy dùng Chrome hoặc Edge.');
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SR();
     recognition.lang = 'vi-VN';
     recognition.continuous = false;
     recognition.interimResults = true;
@@ -73,50 +203,27 @@ export default function VoiceOrb({ onResult, onSpeakEnd, isThinking, speakText }
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [onResult, transcript]);
+  }, [onResult, transcript, startAudioVisualizer, stopAudioVisualizer]);
+
+  // ── Dispatcher (chọn backend phù hợp) ─────────────
+  const startListening = useCallback(() => {
+    if (isCapacitorNative()) {
+      startNativeListening();
+    } else {
+      startWebListening();
+    }
+  }, [startNativeListening, startWebListening]);
 
   const stopListening = useCallback(() => {
+    if (isCapacitorNative()) {
+      stopNativeListening();
+      return;
+    }
     if (recognitionRef.current) {
       recognitionRef.current._lastTranscript = transcript;
       recognitionRef.current.stop();
     }
-  }, [transcript]);
-
-  // ── Audio Visualizer ──────────────────────────
-  const startAudioVisualizer = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      const updateVolume = () => {
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        setVolume(avg / 128);
-        animFrameRef.current = requestAnimationFrame(updateVolume);
-      };
-      updateVolume();
-    } catch (err) {
-      console.error('Microphone access error:', err);
-    }
-  };
-
-  const stopAudioVisualizer = () => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    setVolume(0);
-  };
+  }, [transcript, stopNativeListening]);
 
   // ── Text-to-Speech (Edge TTS — giọng HoaiMy nữ) ────
   const audioRef = useRef(null);
@@ -128,7 +235,7 @@ export default function VoiceOrb({ onResult, onSpeakEnd, isThinking, speakText }
 
     const playTTS = async () => {
       try {
-        const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const API = getApiUrl();
         const token = localStorage.getItem('token');
         const resp = await fetch(`${API}/voice/tts`, {
           method: 'POST',
@@ -191,6 +298,15 @@ export default function VoiceOrb({ onResult, onSpeakEnd, isThinking, speakText }
     }
   };
 
+  // Expose imperative API cho parent (wake-word trigger)
+  useImperativeHandle(ref, () => ({
+    startListening: () => {
+      if (state === STATES.IDLE) startListening();
+    },
+    stopListening,
+    getState: () => state,
+  }), [state, startListening, stopListening]);
+
   // ── Labels ────────────────────────────────────
   const stateLabels = {
     [STATES.IDLE]: 'Nhấn để nói',
@@ -239,3 +355,6 @@ export default function VoiceOrb({ onResult, onSpeakEnd, isThinking, speakText }
     </div>
   );
 }
+
+const VoiceOrb = forwardRef(VoiceOrbInner);
+export default VoiceOrb;
