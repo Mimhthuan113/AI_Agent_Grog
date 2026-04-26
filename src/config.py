@@ -116,8 +116,19 @@ class Settings(BaseSettings):
     )
 
     # ── SECURITY ───────────────────────────────────────────
+    # Mặc định bao gồm:
+    #   - localhost dev (Vite 5173 / CRA 3000)
+    #   - capacitor://localhost (Android WebView khi build APK với Capacitor)
+    #   - https://localhost (iOS WebView / Capacitor https scheme)
+    #   - ionic://localhost (giữ tương thích cũ)
     cors_origins: str = Field(
-        default="http://localhost:5173,http://localhost:3000",
+        default=(
+            "http://localhost:5173,"
+            "http://localhost:3000,"
+            "capacitor://localhost,"
+            "https://localhost,"
+            "ionic://localhost"
+        ),
         alias="CORS_ORIGINS",
     )
     allow_plain_http: bool = Field(default=True, alias="ALLOW_PLAIN_HTTP")
@@ -135,8 +146,22 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        """Parse CORS_ORIGINS string thành list."""
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        """
+        Parse CORS_ORIGINS string thành list, đồng thời tự động bổ sung các
+        scheme Capacitor (capacitor://localhost, https://localhost, ionic://localhost)
+        nếu user chưa khai báo. Mục đích: APK Android luôn gọi được API mà không
+        phải chỉnh tay .env mỗi lần.
+        """
+        base = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        capacitor_origins = [
+            "capacitor://localhost",
+            "https://localhost",
+            "ionic://localhost",
+        ]
+        for origin in capacitor_origins:
+            if origin not in base:
+                base.append(origin)
+        return base
 
     @property
     def admin_emails_list(self) -> list[str]:
