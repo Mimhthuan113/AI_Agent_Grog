@@ -208,9 +208,9 @@ async def process_message(
     # ── Build response ────────────────────────────────────
 
     if gw_result.requires_confirmation:
-        # Lưu lệnh chờ xác nhận cho /chat/confirm
+        # Lưu lệnh chờ xác nhận cho /chat/confirm (Redis-backed nếu có)
         from src.api.routes.chat import store_pending_command
-        store_pending_command(
+        await store_pending_command(
             request_id=gw_result.request_id,
             command=intent,
             user_id=user_id,
