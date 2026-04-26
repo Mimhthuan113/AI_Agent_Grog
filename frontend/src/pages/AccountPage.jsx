@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { listUsers, createUser, deleteUser, updateUser } from '../api/client'
+import { getApiUrl, setApiUrl, hasUserApiOverride, isCapacitorNative, pingApiUrl } from '../api/config'
 import useStore from '../store/useStore'
 import './AccountPage.css'
 
@@ -58,10 +59,97 @@ export default function AccountPage() {
           </Accordion>
         )}
 
+        {/* ══ Backend URL — chủ yếu phục vụ APK Android ══ */}
+        <Accordion icon="🔌" title="Cấu hình kết nối Backend" defaultOpen={isCapacitorNative()}>
+          <BackendUrlSettings />
+        </Accordion>
+
         <button className="acct__logout" onClick={clearAuth}>
           <span>⏻</span> Đăng xuất
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════
+   Backend URL Settings — runtime override
+   Cho phép user (đặc biệt khi chạy APK Android) trỏ frontend
+   tới IP LAN của máy chạy backend, không cần build lại.
+   ═══════════════════════════════════════ */
+function BackendUrlSettings() {
+  const currentUrl = getApiUrl()
+  const [url, setUrl] = useState(currentUrl)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)  // null | 'ok' | 'fail'
+  const [saved, setSaved] = useState(false)
+  const isOverride = hasUserApiOverride()
+  const isNative = isCapacitorNative()
+
+  const handleSave = () => {
+    try {
+      setApiUrl(url)
+      setSaved(true)
+      setTestResult(null)
+      setTimeout(() => setSaved(false), 1800)
+    } catch (e) {
+      alert(e.message || 'URL không hợp lệ')
+    }
+  }
+
+  const handleReset = () => {
+    setApiUrl('')
+    setUrl(getApiUrl())
+    setSaved(true)
+    setTestResult(null)
+    setTimeout(() => setSaved(false), 1800)
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    const ok = await pingApiUrl(url)
+    setTestResult(ok ? 'ok' : 'fail')
+    setTesting(false)
+  }
+
+  return (
+    <div className="bcfg">
+      <p className="bcfg__hint">
+        URL hiện tại: <code className="bcfg__code">{currentUrl}</code>
+        {isOverride && <span className="bcfg__tag">đã override</span>}
+      </p>
+      {isNative && (
+        <p className="bcfg__warn">
+          📱 App đang chạy trong APK — <b>localhost không trỏ về máy của bạn</b>.
+          Hãy dùng IP LAN, ví dụ <code>http://192.168.1.10:8000</code>.
+        </p>
+      )}
+      <input
+        type="text"
+        className="bcfg__input"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="http://192.168.1.10:8000"
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <div className="bcfg__row">
+        <button className="bcfg__btn bcfg__btn--test" onClick={handleTest} disabled={testing || !url}>
+          {testing ? '⏳ Đang test…' : '🔍 Test kết nối'}
+        </button>
+        <button className="bcfg__btn bcfg__btn--save" onClick={handleSave} disabled={!url || url === currentUrl}>
+          💾 Lưu
+        </button>
+        {isOverride && (
+          <button className="bcfg__btn bcfg__btn--reset" onClick={handleReset}>
+            ↺ Reset
+          </button>
+        )}
+      </div>
+      {testResult === 'ok' && <p className="bcfg__msg bcfg__msg--ok">✅ Backend phản hồi</p>}
+      {testResult === 'fail' && <p className="bcfg__msg bcfg__msg--fail">❌ Không kết nối được — kiểm tra IP, port, firewall</p>}
+      {saved && <p className="bcfg__msg bcfg__msg--ok">💾 Đã lưu, các request sẽ dùng URL mới ngay</p>}
     </div>
   )
 }
