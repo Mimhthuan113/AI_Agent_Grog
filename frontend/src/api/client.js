@@ -1,11 +1,11 @@
 import axios from 'axios'
+import { getApiUrl } from './config'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const api = axios.create()
 
-const api = axios.create({ baseURL: API })
-
-// Auto-attach JWT token
+// Auto-attach JWT token + set baseURL động (cho phép user đổi backend URL runtime)
 api.interceptors.request.use(config => {
+  config.baseURL = getApiUrl()
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -41,7 +41,7 @@ export const googleLogin = async (credential) => {
 }
 
 export const logout = async () => {
-  try { await api.post('/auth/logout') } catch (e) {}
+  try { await api.post('/auth/logout') } catch { /* idempotent */ }
   localStorage.removeItem('token')
   localStorage.removeItem('roles')
 }
@@ -55,6 +55,104 @@ export const getMe = async () => {
 export const sendMessage = async (message) => {
   const { data } = await api.post('/chat', { message })
   return data
+}
+
+// ── Streaming chat (SSE) ─────────────────────────────
+// Vì axios không stream tốt và EventSource không hỗ trợ POST + custom header,
+// dùng fetch + ReadableStream để parse SSE thủ công.
+//
+// Callback API:
+//   onMeta({category, request_id})
+//   onChunk(textPiece)
+//   onDone({success, command, requires_confirmation, request_id})
+//   onError(error)
+export const streamMessage = async (
+  message,
+  { lat = null, lng = null, signal = null, onMeta, onChunk, onDone, onError } = {}
+) => {
+  const token = localStorage.getItem('token')
+  const payload = { message }
+  if (lat != null && lng != null) {
+    payload.lat = lat
+    payload.lng = lng
+  }
+
+  let res
+  try {
+    res = await fetch(`${getApiUrl()}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal,
+    })
+  } catch (err) {
+    onError?.(err)
+    throw err
+  }
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('roles')
+      window.location.reload()
+      return
+    }
+    const err = new Error(`HTTP ${res.status}`)
+    err.status = res.status
+    onError?.(err)
+    throw err
+  }
+
+  if (!res.body || !res.body.getReader) {
+    // Browser không hỗ trợ ReadableStream → fallback đọc full text
+    const text = await res.text()
+    parseSSEBlock(text, { onMeta, onChunk, onDone })
+    return
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE events tách bằng \n\n
+      let sepIdx
+      while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, sepIdx)
+        buffer = buffer.slice(sepIdx + 2)
+        parseSSEBlock(block, { onMeta, onChunk, onDone })
+      }
+    }
+    // Flush phần còn lại (nếu có)
+    if (buffer.trim()) parseSSEBlock(buffer, { onMeta, onChunk, onDone })
+  } catch (err) {
+    if (err.name !== 'AbortError') onError?.(err)
+    throw err
+  }
+}
+
+// Parse 1 block SSE (có thể chứa nhiều dòng "data: ...")
+function parseSSEBlock(block, { onMeta, onChunk, onDone }) {
+  const lines = block.split('\n')
+  for (const line of lines) {
+    if (!line.startsWith('data:')) continue
+    const json = line.slice(5).trim()
+    if (!json) continue
+    let evt
+    try { evt = JSON.parse(json) } catch { continue }
+    if (evt.type === 'meta') onMeta?.(evt)
+    else if (evt.type === 'chunk') onChunk?.(evt.text || '')
+    else if (evt.type === 'done') onDone?.(evt)
+  }
 }
 
 // Confirm — xác nhận lệnh nguy hiểm

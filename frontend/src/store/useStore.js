@@ -37,6 +37,12 @@ const useStore = create((set, get) => ({
   // Chat
   messages: [WELCOME_MSG()],
   addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
+  // Patch (merge) message cuối cùng — dùng cho streaming SSE update text dần
+  updateLastMessage: (patch) => set(s => {
+    if (!s.messages.length) return {}
+    const last = s.messages[s.messages.length - 1]
+    return { messages: [...s.messages.slice(0, -1), { ...last, ...patch }] }
+  }),
   isThinking: false,
   setThinking: (v) => set({ isThinking: v }),
 

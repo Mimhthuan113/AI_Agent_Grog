@@ -83,6 +83,19 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Streaming cursor — nháy khi đang nhận text từ SSE */
+.siri-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 300;
+  animation: siriCursorBlink 1s steps(1) infinite;
+}
+
+@keyframes siriCursorBlink {
+  50% { opacity: 0; }
+}
+
 /* ── Quick Suggestions (Siri-style) ──────────── */
 
 .siri-suggestions {
@@ -273,6 +286,26 @@
 
 .mode-btn:hover:not(.active) {
   color: rgba(255, 255, 255, 0.6);
+}
+
+/* Wake-word button — phong cách giống mode-btn nhưng accent xanh khi active */
+.mode-btn.wake-btn.active {
+  background: rgba(80, 200, 160, 0.15);
+  border-color: rgba(80, 200, 160, 0.35);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.mode-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wake-error {
+  text-align: center;
+  font-size: 11px;
+  color: #ff8c66;
+  padding: 4px 12px;
+  opacity: 0.85;
 }
 
 /* ── Thinking Overlay ────────────────────────── */
