@@ -155,7 +155,7 @@ class SecurityGateway:
 
         try:
             # ── Step 0: Rate Limit ─────────────────────────
-            rl_result = self._rate_limiter.check_rate_limit(
+            rl_result = await self._rate_limiter.check_rate_limit(
                 user_id=user_id,
                 entity_id=entity_id if entity_id != "unknown" else None,
             )
