@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -40,6 +41,54 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context — modern FastAPI startup/shutdown (thay cho on_event).
+    Dùng để init shared resources (HA client, DB pool, ...) và cleanup.
+    """
+    settings = get_settings()
+
+    # ── Startup ──────────────────────────────────────────
+    logger.info("=" * 60)
+    logger.info("Smart AI Home Hub — Starting up...")
+    logger.info("Environment: %s", settings.app_env)
+    logger.info("Debug mode: %s", settings.app_debug)
+    logger.info("CORS origins: %s", settings.cors_origins_list)
+    logger.info("JWT Algorithm: %s", settings.jwt_algorithm)
+    logger.info("Token expiry: %d minutes", settings.jwt_access_token_expire_minutes)
+    logger.info("Groq model: %s", settings.groq_model_default)
+    logger.info("=" * 60)
+
+    # Init audit DB (lazy ensure schema + WAL mode)
+    try:
+        from src.core.security.audit_logger import get_audit_logger
+        await get_audit_logger().init()
+    except Exception as e:
+        logger.error("[STARTUP] Audit init failed: %s", str(e)[:200])
+
+    # Init HA client (chỉ khi có HA_TOKEN — nếu không thì gateway dùng mock)
+    if settings.ha_token:
+        try:
+            from src.services.ha_provider.ha_client import get_ha_client
+            from src.core.security.gateway import get_gateway
+            ha = await get_ha_client()
+            get_gateway().set_ha_client(ha)
+            logger.info("[STARTUP] HA client connected: %s", settings.ha_base_url)
+        except Exception as e:
+            logger.warning("[STARTUP] HA client unavailable, fallback mock: %s", str(e)[:200])
+
+    yield  # ← App đang chạy ở đây
+
+    # ── Shutdown ─────────────────────────────────────────
+    logger.info("Smart AI Home Hub — Shutting down...")
+    try:
+        from src.services.ha_provider.ha_client import close_ha_client
+        await close_ha_client()
+    except Exception:
+        pass
+
+
 def create_app() -> FastAPI:
     """
     Application Factory Pattern.
@@ -57,6 +106,7 @@ def create_app() -> FastAPI:
         version="1.0.0",
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
+        lifespan=lifespan,
     )
 
     # ── CORS Middleware ────────────────────────────────────
@@ -88,24 +138,6 @@ def create_app() -> FastAPI:
             return FileResponse(static_dir / "index.html")
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
         logger.info("Static files served from: %s", static_dir)
-
-    # ── Startup Event ──────────────────────────────────────
-    @app.on_event("startup")
-    async def on_startup():
-        logger.info("=" * 60)
-        logger.info("Smart AI Home Hub — Starting up...")
-        logger.info("Environment: %s", settings.app_env)
-        logger.info("Debug mode: %s", settings.app_debug)
-        logger.info("CORS origins: %s", settings.cors_origins_list)
-        logger.info("JWT Algorithm: %s", settings.jwt_algorithm)
-        logger.info("Token expiry: %d minutes", settings.jwt_access_token_expire_minutes)
-        logger.info("Groq model: %s", settings.groq_model_default)
-        logger.info("=" * 60)
-
-    # ── Shutdown Event ─────────────────────────────────────
-    @app.on_event("shutdown")
-    async def on_shutdown():
-        logger.info("Smart AI Home Hub — Shutting down...")
 
     return app
 
