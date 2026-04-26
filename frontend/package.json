@@ -7,9 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup:env": "node scripts/setup-env.mjs",
+    "setup:env:i": "node scripts/setup-env.mjs --interactive",
+    "cap:sync": "npm run build && cap sync android",
+    "cap:open": "cap open android",
+    "android:dev": "npm run setup:env && npm run build && cap sync android && cap open android",
+    "android:apk": "npm run setup:env && npm run build && cap sync android && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@capacitor-community/speech-recognition": "^6.0.1",
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
     "axios": "^1.15.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -17,6 +26,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
     "@eslint/js": "^9.39.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
