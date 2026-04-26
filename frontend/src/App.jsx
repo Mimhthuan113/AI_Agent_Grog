@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import useStore from './store/useStore'
 import { getMe } from './api/client'
-import { ToastProvider } from './ui'
+import { ToastProvider, PageLoader } from './ui'
 import AppShell from './layouts/AppShell'
 import AuthShell from './layouts/AuthShell'
 import LoginPage from './features/auth/LoginPage'
@@ -43,7 +43,7 @@ function AppRouter() {
   if (loading) {
     return (
       <AuthShell>
-        <BootSplash />
+        <PageLoader variant="fullscreen" label="Đang khởi tạo Aisha" />
       </AuthShell>
     )
   }

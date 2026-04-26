@@ -19,7 +19,7 @@ export default function AppShell({ children }) {
   const picture = useStore(s => s.picture)
 
   const isOwner = roles.includes('owner')
-  const { theme, cycleTheme } = useTheme()
+  const { theme, cyceTheme } = useTheme()
 
   return (
     <div className="app-shell">
@@ -67,11 +67,11 @@ export default function AppShell({ children }) {
 
           <button
             className="app-shell__icon-btn"
-            onClick={cycleTheme}
-            title={`Chế độ: ${theme === 'auto' ? 'Tự động' : theme === 'light' ? 'Sáng' : 'Tối'} (bấm để đổi)`}
+            onClick={toggleTheme}
+            title={`Chế độ ${theme === 'light' ? 'Sáng' : 'Tối'} — bấm để đổi`}
             aria-label="Đổi chủ đề sáng / tối"
           >
-            {theme === 'light' ? <SunIcon /> : theme === 'dark' ? <MoonIcon /> : <AutoIcon />}
+            {theme === 'light' ? <SunIcon /> : <MoonIcon />}
           </button>
 
           <button
@@ -195,14 +195,6 @@ function MoonIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-    </svg>
-  )
-}
-function AutoIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9"/>
-      <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
     </svg>
   )
 }

@@ -102,60 +102,34 @@
 }
 
 /* ============================================================
-   THEME: LIGHT ("Bình minh") — auto theo system
+   THEME: LIGHT ("Bình minh")
+   Chỉ kích hoạt khi user explicit chọn — KHÔNG auto theo system.
+   Lý do: Aisha là Aurora AI, dark là DNA chính.
+   Light mode dành cho ai cần đọc ban ngày dưới nắng gắt.
    ============================================================ */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-
-    --bg-canvas:   #FAFAFE;
-    --bg-surface:  #FFFFFF;
-    --bg-elevated: #FFFFFF;
-    --bg-input:    rgba(15, 15, 30, 0.04);
-    --bg-glass:    rgba(255, 255, 255, 0.72);
-    --bg-overlay:  rgba(15, 15, 30, 0.50);
-    --bg-hover:    rgba(15, 15, 30, 0.04);
-
-    --text-primary:   #0F0F1E;
-    --text-secondary: #4A4A6A;
-    --text-muted:     #8A8AA8;
-    --text-inverse:   #FFFFFF;
-    --text-on-brand:  #FFFFFF;
-
-    --border-subtle: rgba(15, 15, 30, 0.08);
-    --border-strong: rgba(15, 15, 30, 0.16);
-    --border-brand:  rgba(124, 92, 255, 0.35);
-
-    --shadow-soft:  0 4px 24px -8px rgba(124, 92, 255, 0.15);
-    --shadow-glow:  0 0 32px -4px rgba(124, 92, 255, 0.30);
-    --shadow-card:  0 8px 24px -12px rgba(15, 15, 30, 0.10);
-    --shadow-toast: 0 20px 40px -12px rgba(15, 15, 30, 0.18);
-  }
-}
-
 [data-theme="light"] {
   color-scheme: light;
 
-  --bg-canvas:   #FAFAFE;
+  --bg-canvas:   #F5F5FB;        /* xám lavender nhẹ — đỡ chói hơn trắng tinh */
   --bg-surface:  #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-input:    rgba(15, 15, 30, 0.04);
-  --bg-glass:    rgba(255, 255, 255, 0.72);
-  --bg-overlay:  rgba(15, 15, 30, 0.50);
-  --bg-hover:    rgba(15, 15, 30, 0.04);
+  --bg-input:    rgba(15, 15, 30, 0.05);
+  --bg-glass:    rgba(255, 255, 255, 0.78);
+  --bg-overlay:  rgba(15, 15, 30, 0.55);
+  --bg-hover:    rgba(15, 15, 30, 0.05);
 
   --text-primary:   #0F0F1E;
-  --text-secondary: #4A4A6A;
-  --text-muted:     #8A8AA8;
+  --text-secondary: #3A3A58;
+  --text-muted:     #7A7A98;
   --text-inverse:   #FFFFFF;
   --text-on-brand:  #FFFFFF;
 
-  --border-subtle: rgba(15, 15, 30, 0.08);
-  --border-strong: rgba(15, 15, 30, 0.16);
-  --border-brand:  rgba(124, 92, 255, 0.35);
+  --border-subtle: rgba(15, 15, 30, 0.10);
+  --border-strong: rgba(15, 15, 30, 0.20);
+  --border-brand:  rgba(124, 92, 255, 0.45);
 
-  --shadow-soft:  0 4px 24px -8px rgba(124, 92, 255, 0.15);
-  --shadow-glow:  0 0 32px -4px rgba(124, 92, 255, 0.30);
-  --shadow-card:  0 8px 24px -12px rgba(15, 15, 30, 0.10);
-  --shadow-toast: 0 20px 40px -12px rgba(15, 15, 30, 0.18);
+  --shadow-soft:  0 4px 24px -8px rgba(124, 92, 255, 0.20);
+  --shadow-glow:  0 0 32px -4px rgba(124, 92, 255, 0.40);
+  --shadow-card:  0 8px 24px -12px rgba(15, 15, 30, 0.18);
+  --shadow-toast: 0 20px 40px -12px rgba(15, 15, 30, 0.25);
 }
