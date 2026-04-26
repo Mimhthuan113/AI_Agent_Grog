@@ -12,6 +12,21 @@ dist
 dist-ssr
 *.local
 
+# Env files (chứa IP LAN / API keys cá nhân)
+.env
+.env.local
+.env.production
+.env.development.local
+
+# Capacitor — generated, không commit (sẽ regenerate bằng `cap add android`)
+android/app/build
+android/.gradle
+android/build
+android/captures
+android/local.properties
+android/key.properties
+*.keystore
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

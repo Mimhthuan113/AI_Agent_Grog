@@ -3,12 +3,19 @@ import { login as apiLogin, googleLogin as apiGoogleLogin, getMe } from '../api/
 import useStore from '../store/useStore'
 import './LoginPage.css'
 
-// Google Client ID
-const GOOGLE_CLIENT_ID = '1024198635802-ke42fatp2odl6coh5ploporrd62qcnve.apps.googleusercontent.com'
+// Google Client ID — đọc từ env (VITE_GOOGLE_CLIENT_ID), fallback dev local
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '1024198635802-ke42fatp2odl6coh5ploporrd62qcnve.apps.googleusercontent.com'
+
+// Prefill chỉ khi DEV mode (để debug nhanh). Production luôn rỗng.
+const DEV_PREFILL = import.meta.env.DEV
+  ? { username: 'admin', password: 'changeme_strong_password_here' }
+  : { username: '', password: '' }
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('changeme_strong_password_here')
+  const [username, setUsername] = useState(DEV_PREFILL.username)
+  const [password, setPassword] = useState(DEV_PREFILL.password)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const setAuth = useStore(s => s.setAuth)
