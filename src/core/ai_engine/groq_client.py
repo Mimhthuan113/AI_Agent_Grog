@@ -19,6 +19,7 @@ import logging
 import urllib.request
 import urllib.error
 from dataclasses import dataclass
+from typing import AsyncGenerator
 
 from src.config import get_settings
 
@@ -214,6 +215,116 @@ class GroqClient:
         )
         with urllib.request.urlopen(req, timeout=self._timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
+
+    async def chat_stream(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Streaming chat — yield từng chunk text khi LLM trả về.
+
+        Groq SSE format (OpenAI-compatible):
+            data: {"choices":[{"delta":{"content":"Xin"}}]}
+            data: {"choices":[{"delta":{"content":" chào"}}]}
+            data: [DONE]
+
+        Usage:
+            async for chunk in groq.chat_stream(messages):
+                print(chunk, end="", flush=True)
+
+        Note: nếu LLM lỗi (network, 4xx, 5xx) → generator kết thúc im lặng,
+        không raise. Caller có thể kiểm tra `full_response` đã yield bao nhiêu
+        chunk để biết đã có response hay chưa, rồi tự fallback.
+        """
+        import httpx  # Lazy import — chỉ load khi stream
+
+        payload = {
+            "model": model or self._model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else self._temperature,
+            "max_tokens": max_tokens or self._max_tokens,
+            "stream": True,
+        }
+
+        full_response = ""
+        start = time.monotonic()
+
+        try:
+            # Timeout dài hơn cho stream — cho phép TTFT chậm + body dài
+            timeout = httpx.Timeout(
+                connect=5.0,
+                read=self._timeout,    # idle timeout giữa các chunk
+                write=5.0,
+                pool=5.0,
+            )
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST",
+                    self.API_URL,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "SmartAIHomeHub/1.0",
+                        "Accept": "text/event-stream",
+                    },
+                ) as resp:
+                    if resp.status_code != 200:
+                        error_body = (await resp.aread()).decode("utf-8", errors="replace")[:200]
+                        logger.error("[GROQ:Stream] HTTP %d: %s", resp.status_code, error_body)
+                        return
+
+                    async for line in resp.aiter_lines():
+                        # Bỏ qua heartbeat "..." hoặc dòng rỗng
+                        if not line:
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if not data_str:
+                            continue
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # Defensive parsing — tránh KeyError nếu format đổi
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        content = delta.get("content") or ""
+                        if content:
+                            full_response += content
+                            yield content
+
+            latency = int((time.monotonic() - start) * 1000)
+            logger.info(
+                "[GROQ:Stream] OK: model=%s chars=%d latency=%dms",
+                payload["model"], len(full_response), latency,
+            )
+
+            # Trace toàn bộ response sau khi xong (Langfuse) — fail-safe
+            if full_response:
+                self._trace_llm(
+                    messages=payload["messages"],
+                    response=full_response,
+                    model=payload["model"],
+                    tokens=0,  # streaming không trả total_tokens
+                    latency_ms=latency,
+                )
+
+        except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            logger.warning("[GROQ:Stream] Timeout: %s", str(e)[:120])
+        except httpx.HTTPError as e:
+            logger.error("[GROQ:Stream] HTTP error: %s", str(e)[:200])
+        except Exception as e:  # noqa: BLE001
+            logger.error("[GROQ:Stream] Unexpected: %s", str(e)[:200])
 
 
 # ── Singleton ──────────────────────────────────────────────
