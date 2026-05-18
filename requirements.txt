@@ -26,3 +26,14 @@ httpx==0.28.1
 # ── Database ─────────────────────────────────
 aiosqlite==0.22.1
 redis==7.4.0
+
+# ── UI Automation (Generic UI Agent) ─────────
+# Cho phép Aisha tự động hóa BẤT KỲ app nào trên Windows.
+# Dùng Vision LLM (Groq) để nhìn màn hình → click, type, paste.
+pyautogui>=0.9.54        # Điều khiển chuột, bàn phím, chụp màn hình
+pyperclip>=1.9.0         # Clipboard — paste tiếng Việt an toàn
+Pillow>=10.0.0           # Resize ảnh trước khi gửi Vision LLM
+pygetwindow>=0.0.9       # Tìm và focus cửa sổ app (Windows)
+
+# ── Voice / TTS ──────────────────────────────
+edge-tts>=7.0.0          # Giọng Microsoft vi-VN-HoaiMyNeural

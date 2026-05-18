@@ -30,6 +30,12 @@ class Settings(BaseSettings):
 
     # ── GROQ API (LLM) ─────────────────────────────────────
     groq_api_key: str = Field(..., alias="GROQ_API_KEY")
+    groq_api_key_2: str = Field(default="", alias="GROQ_API_KEY_2")
+    groq_api_key_3: str = Field(default="", alias="GROQ_API_KEY_3")
+    groq_api_key_4: str = Field(default="", alias="GROQ_API_KEY_4")
+    groq_api_keys: str = Field(default="", alias="GROQ_API_KEYS")
+    groq_chat_api_keys: str = Field(default="", alias="GROQ_CHAT_API_KEYS")
+    groq_vision_api_keys: str = Field(default="", alias="GROQ_VISION_API_KEYS")
     groq_model_default: str = Field(
         default="llama3-8b-8192", alias="GROQ_MODEL_DEFAULT"
     )
@@ -143,6 +149,60 @@ class Settings(BaseSettings):
     admin_emails: str = Field(default="tran.thuan@gmail.com", alias="ADMIN_EMAILS")
 
     # ── Computed Properties ────────────────────────────────
+
+    @staticmethod
+    def _split_csv_keys(*values: str) -> list[str]:
+        """Parse API key list, remove empty values and duplicates while preserving order."""
+        keys: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            for item in (value or "").replace("\n", ",").split(","):
+                key = item.strip()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                keys.append(key)
+        return keys
+
+    @property
+    def groq_all_api_key_list(self) -> list[str]:
+        """All Groq keys declared in .env."""
+        return self._split_csv_keys(
+            self.groq_api_key,
+            self.groq_api_key_2,
+            self.groq_api_key_3,
+            self.groq_api_key_4,
+            self.groq_api_keys,
+        )
+
+    @property
+    def groq_chat_api_key_list(self) -> list[str]:
+        """
+        Keys for normal chat / intent parsing.
+        If no explicit chat pool is configured, reserve the last key for vision.
+        """
+        explicit = self._split_csv_keys(self.groq_chat_api_keys)
+        if explicit:
+            return explicit
+        keys = self.groq_all_api_key_list
+        if len(keys) > 1:
+            return keys[:-1]
+        return keys
+
+    @property
+    def groq_vision_api_key_list(self) -> list[str]:
+        """
+        Keys for screenshot-based UI Agent vision calls.
+        Defaults to the last declared Groq key so UI automation does not share
+        quota with normal chat when multiple keys exist.
+        """
+        explicit = self._split_csv_keys(self.groq_vision_api_keys)
+        if explicit:
+            return explicit
+        keys = self.groq_all_api_key_list
+        if len(keys) > 1:
+            return keys[-1:]
+        return keys
 
     @property
     def cors_origins_list(self) -> list[str]:
