@@ -112,6 +112,7 @@ class SecurityGateway:
         ip_address: str = "",
         session_id: str = "",
         user_roles: list[str] | None = None,
+        skip_confirmation: bool = False,
     ) -> GatewayResponse:
         """
         Xu ly 1 lenh tu AI Engine qua toan bo security pipeline.
@@ -215,34 +216,31 @@ class SecurityGateway:
                 )
 
             # ── Step 1b: RBAC Check ────────────────────────
-            if user_roles:
-                try:
-                    check_permission(user_roles, clean_cmd.entity_id, clean_cmd.action)
-                    _step("RBAC", "pass", f"roles={user_roles}")
-                except RBACError as e:
-                    _step("RBAC", "fail", str(e))
-                    await self._log_audit(
-                        request_id=request_id,
-                        user_id=user_id,
-                        ip_address=ip_address,
-                        session_id=session_id,
-                        entity_id=entity_id,
-                        action=action,
-                        params=json.dumps(clean_cmd.params),
-                        decision="DENIED",
-                        deny_reason="RBAC_DENIED",
-                        safety_level="",
-                    )
-                    return _make_response(
-                        request_id=request_id,
-                        success=False,
-                        decision="DENIED",
-                        safety_level="",
-                        error_code="RBAC_DENIED",
-                        error_msg=GATEWAY_ERRORS["RBAC_DENIED"],
-                    )
-            else:
-                _step("RBAC", "skip", "No roles provided")
+            try:
+                check_permission(user_roles or [], clean_cmd.entity_id, clean_cmd.action)
+                _step("RBAC", "pass", f"roles={user_roles or []}")
+            except RBACError as e:
+                _step("RBAC", "fail", str(e))
+                await self._log_audit(
+                    request_id=request_id,
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    session_id=session_id,
+                    entity_id=entity_id,
+                    action=action,
+                    params=json.dumps(clean_cmd.params),
+                    decision="DENIED",
+                    deny_reason="RBAC_DENIED",
+                    safety_level="",
+                )
+                return _make_response(
+                    request_id=request_id,
+                    success=False,
+                    decision="DENIED",
+                    safety_level="",
+                    error_code="RBAC_DENIED",
+                    error_msg=GATEWAY_ERRORS["RBAC_DENIED"],
+                )
 
             # ── Step 2: Rule Engine ────────────────────────
             try:
@@ -334,28 +332,31 @@ class SecurityGateway:
                 clean_cmd.entity_id, clean_cmd.action
             )
             if needs_confirm and safety_level in (SafetyLevel.WARNING, SafetyLevel.CRITICAL):
-                _step("Confirmation", "pending", f"level={safety_level_str}")
-                await self._log_audit(
-                    request_id=request_id,
-                    user_id=user_id,
-                    ip_address=ip_address,
-                    session_id=session_id,
-                    entity_id=entity_id,
-                    action=action,
-                    params=json.dumps(clean_cmd.params),
-                    decision="APPROVED",
-                    deny_reason=None,
-                    safety_level=safety_level_str,
-                    ha_result="PENDING_CONFIRMATION",
-                )
-                return _make_response(
-                    request_id=request_id,
-                    success=True,
-                    decision="APPROVED",
-                    safety_level=safety_level_str,
-                    requires_confirmation=True,
-                    error_msg=GATEWAY_ERRORS["CONFIRMATION_REQUIRED"],
-                )
+                if skip_confirmation:
+                    _step("Confirmation", "pass", "Đã xác nhận bởi user")
+                else:
+                    _step("Confirmation", "pending", f"level={safety_level_str}")
+                    await self._log_audit(
+                        request_id=request_id,
+                        user_id=user_id,
+                        ip_address=ip_address,
+                        session_id=session_id,
+                        entity_id=entity_id,
+                        action=action,
+                        params=json.dumps(clean_cmd.params),
+                        decision="APPROVED",
+                        deny_reason=None,
+                        safety_level=safety_level_str,
+                        ha_result="PENDING_CONFIRMATION",
+                    )
+                    return _make_response(
+                        request_id=request_id,
+                        success=True,
+                        decision="APPROVED",
+                        safety_level=safety_level_str,
+                        requires_confirmation=True,
+                        error_msg=GATEWAY_ERRORS["CONFIRMATION_REQUIRED"],
+                    )
             else:
                 _step("Confirmation", "skip", "Không cần xác nhận")
 
@@ -388,20 +389,27 @@ class SecurityGateway:
             # ── Step 3: Execute (call HA) ──────────────────
             ha_result_dict = None
             start_time = time.monotonic()
+            ha_error_msg = None
 
             if self._ha_client is not None:
                 try:
-                    ha_result_dict = await self._ha_client.call_service(
-                        entity_id=clean_cmd.entity_id,
-                        action=clean_cmd.action,
-                        params=clean_cmd.params,
-                    )
+                    if clean_cmd.action == "get_state":
+                        ha_result_dict = await self._ha_client.get_state(clean_cmd.entity_id)
+                        if ha_result_dict is None:
+                            raise RuntimeError(f"HA state not found: {clean_cmd.entity_id}")
+                    else:
+                        ha_result_dict = await self._ha_client.call_service(
+                            entity_id=clean_cmd.entity_id,
+                            action=clean_cmd.action,
+                            params=clean_cmd.params,
+                        )
                     ha_result_str = "SUCCESS"
                     self._rate_limiter.circuit.record_success()
                 except Exception as e:
                     ha_result_str = "FAILED"
+                    ha_error_msg = str(e)[:200]
                     self._rate_limiter.circuit.record_failure()
-                    logger.error("[GATEWAY] HA call failed: %s", str(e)[:200])
+                    logger.error("[GATEWAY] HA call failed: %s", ha_error_msg)
             else:
                 # HA client chua co — mock response (dev mode)
                 ha_result_dict = {
@@ -412,8 +420,38 @@ class SecurityGateway:
                 ha_result_str = "SUCCESS_MOCK"
 
             ha_response_ms = int((time.monotonic() - start_time) * 1000)
-            _step("Execute HA", "pass" if "SUCCESS" in (ha_result_str or "") else "fail",
-                  f"{ha_result_str} ({ha_response_ms}ms)")
+            execute_ok = ha_result_str in ("SUCCESS", "SUCCESS_MOCK")
+            _step(
+                "Execute HA",
+                "pass" if execute_ok else "fail",
+                f"{ha_result_str} ({ha_response_ms}ms)",
+            )
+
+            if not execute_ok:
+                await self._log_audit(
+                    request_id=request_id,
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    session_id=session_id,
+                    entity_id=entity_id,
+                    action=action,
+                    params=json.dumps(clean_cmd.params),
+                    decision="FAILED",
+                    deny_reason="EXECUTION_ERROR",
+                    safety_level=safety_level_str,
+                    ha_result=ha_result_str,
+                    ha_response_ms=ha_response_ms,
+                )
+                _step("Audit Log", "pass", f"req={request_id[:8]}")
+                return _make_response(
+                    request_id=request_id,
+                    success=False,
+                    decision="FAILED",
+                    safety_level=safety_level_str,
+                    error_code="EXECUTION_ERROR",
+                    error_msg=GATEWAY_ERRORS["EXECUTION_ERROR"],
+                    ha_response_ms=ha_response_ms,
+                )
 
             # ── Step 4: Audit Log ──────────────────────────
             await self._log_audit(
@@ -444,19 +482,22 @@ class SecurityGateway:
         except Exception as e:
             # Catch-all — KHONG BAO GIO de Gateway crash
             logger.exception("[GATEWAY] Unexpected error: %s", str(e)[:200])
-            await self._log_audit(
-                request_id=request_id or "unknown",
-                user_id=user_id,
-                ip_address=ip_address,
-                session_id=session_id,
-                entity_id=entity_id,
-                action=action,
-                params="{}",
-                decision="DENIED",
-                deny_reason="INTERNAL_ERROR",
-                safety_level="",
-            )
-            return GatewayResponse(
+            try:
+                await self._log_audit(
+                    request_id=request_id or "unknown",
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    session_id=session_id,
+                    entity_id=entity_id,
+                    action=action,
+                    params="{}",
+                    decision="DENIED",
+                    deny_reason="INTERNAL_ERROR",
+                    safety_level="",
+                )
+            except Exception as audit_error:
+                logger.critical("[GATEWAY] Audit unavailable during error path: %s", audit_error)
+            return _make_response(
                 request_id=request_id or "unknown",
                 success=False,
                 decision="DENIED",

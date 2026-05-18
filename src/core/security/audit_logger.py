@@ -203,8 +203,8 @@ class AuditLogger:
                 record.decision,
             )
         except Exception as e:
-            # Audit log KHONG duoc lam crash he thong
             logger.error("[AUDIT] Failed to write log: %s", e)
+            raise
 
     async def query(
         self,
