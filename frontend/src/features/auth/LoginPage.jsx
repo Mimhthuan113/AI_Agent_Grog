@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { login as apiLogin, googleLogin as apiGoogleLogin, getMe } from '../../api/client'
 import useStore from '../../store/useStore'
 import { Button, Input, Card, useToast } from '../../ui'
@@ -21,20 +21,38 @@ export default function LoginPage() {
   const googleBtnRef = useRef(null)
   const toast = useToast()
 
-  useEffect(() => {
-    if (window.google?.accounts?.id) {
-      initGoogleButton()
-      return
+  const handleLogin = async (e) => {
+    e?.preventDefault?.()
+    setError('')
+    setLoading(true)
+    try {
+      const data = await apiLogin(username, password)
+      const me = await getMe()
+      setAuth(me, data.access_token)
+      toast.success('Đăng nhập thành công')
+    } catch (e) {
+      const msg = e.response?.data?.detail || 'Không kết nối được server'
+      setError(msg)
     }
-    const script = document.createElement('script')
-    script.src = 'https://accounts.google.com/gsi/client'
-    script.async = true
-    script.defer = true
-    script.onload = () => initGoogleButton()
-    document.head.appendChild(script)
-  }, [])
+    setLoading(false)
+  }
 
-  const initGoogleButton = () => {
+  const handleGoogleCallback = useCallback(async (response) => {
+    setError('')
+    setLoading(true)
+    try {
+      const data = await apiGoogleLogin(response.credential)
+      const me = await getMe()
+      setAuth(me, data.access_token)
+      toast.success(`Chào mừng ${me.user_id?.split('@')[0] || 'bạn'}`)
+    } catch (e) {
+      const msg = e.response?.data?.detail || 'Đăng nhập Google thất bại'
+      setError(msg)
+    }
+    setLoading(false)
+  }, [setAuth, toast])
+
+  const initGoogleButton = useCallback(() => {
     if (!window.google?.accounts?.id || !googleBtnRef.current) return
     window.google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
@@ -49,37 +67,20 @@ export default function LoginPage() {
       text: 'signin_with',
       locale: 'vi',
     })
-  }
+  }, [handleGoogleCallback])
 
-  const handleLogin = async (e) => {
-    e?.preventDefault?.()
-    setError('')
-    setLoading(true)
-    try {
-      const data = await apiLogin(username, password)
-      setAuth({ user_id: data.user_id }, data.access_token)
-      toast.success('Đăng nhập thành công')
-    } catch (e) {
-      const msg = e.response?.data?.detail || 'Không kết nối được server'
-      setError(msg)
+  useEffect(() => {
+    if (window.google?.accounts?.id) {
+      initGoogleButton()
+      return
     }
-    setLoading(false)
-  }
-
-  const handleGoogleCallback = async (response) => {
-    setError('')
-    setLoading(true)
-    try {
-      const data = await apiGoogleLogin(response.credential)
-      const me = await getMe()
-      setAuth(me, data.access_token)
-      toast.success(`Chào mừng ${me.user_id?.split('@')[0] || 'bạn'}`)
-    } catch (e) {
-      const msg = e.response?.data?.detail || 'Đăng nhập Google thất bại'
-      setError(msg)
-    }
-    setLoading(false)
-  }
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = () => initGoogleButton()
+    document.head.appendChild(script)
+  }, [initGoogleButton])
 
   return (
     <div className="login fade-in-up">

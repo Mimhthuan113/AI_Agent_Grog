@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { streamMessage, confirmCommand } from '../../api/client'
+import { streamMessage, confirmCommand, stopAutomation, getAutomationStatus } from '../../api/client'
 import useStore from '../../store/useStore'
 import VoiceOrb from '../../components/OrbAvatar/OrbAvatar'
 import useWakeWord from '../../hooks/useWakeWord'
@@ -40,6 +40,30 @@ const CATEGORY_LABEL = {
   app_action:     '⚙️ Ứng dụng',
 }
 
+const WAKE_PROMPT = 'Bạn cần gì?'
+const QUICK_SPEAK_MIN_CHARS = 10
+const QUICK_SPEAK_FALLBACK_CHARS = 80
+const QUICK_SPEAK_MAX_CHARS = 130
+const QUICK_SPEAK_CATEGORIES = new Set(['general_chat', 'app_action', 'smart_home'])
+
+function extractQuickSpeakText(text) {
+  const clean = (text || '').replace(/\s+/g, ' ').trim()
+  if (clean.length < QUICK_SPEAK_MIN_CHARS) return ''
+  const sentence = clean.match(/^(.{10,130}?[.!?…])(?:\s|$)/)
+  if (sentence?.[1]) return sentence[1].trim()
+  if (clean.length >= QUICK_SPEAK_FALLBACK_CHARS) {
+    return clean.slice(0, QUICK_SPEAK_MAX_CHARS).replace(/\s+\S*$/, '').trim()
+  }
+  return ''
+}
+
+function getRemainingSpeech(fullText, spokenPrefix) {
+  const full = (fullText || '').replace(/\s+/g, ' ').trim()
+  const spoken = (spokenPrefix || '').replace(/\s+/g, ' ').trim()
+  if (!full || !spoken || !full.startsWith(spoken)) return ''
+  return full.slice(spoken.length).replace(/^[\s,.;:!?…-]+/, '').trim()
+}
+
 export default function ChatPage() {
   const {
     messages, addMessage, updateLastMessage,
@@ -49,34 +73,72 @@ export default function ChatPage() {
 
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [isAutomating, setIsAutomating] = useState(false)  // UI Agent dang chay
   const [speakText, setSpeakText] = useState('')
   const [lastResponse, setLastResponse] = useState(null)
   const [mode, setMode] = useState('voice')
   const historyEndRef = useRef(null)
   const toast = useToast()
+  const automationPollRef = useRef(null)
 
   // Wake-word "Hey Aisha"
   const voiceOrbRef = useRef(null)
+  const wakePromptPendingRef = useRef(false)
+  const wakeConversationRef = useRef(false)
+  const modeRef = useRef(mode)
+  const isThinkingRef = useRef(isThinking)
+  const isAutomatingRef = useRef(isAutomating)
+  const isRespondingRef = useRef(false)
+  const quickSpeakStartedRef = useRef(false)
+  const spokenPrefixRef = useRef('')
+  const pendingSpeakTextRef = useRef('')
   const [voiceState, setVoiceState] = useState('idle')
-  const [wakeEnabled, setWakeEnabled] = useState(() => {
-    return localStorage.getItem('aisha:wakeword') === '1'
-  })
+  const voiceStateRef = useRef(voiceState)
+  const [wakeEnabled, setWakeEnabled] = useState(true)
+
+  useEffect(() => { modeRef.current = mode }, [mode])
+  useEffect(() => { isThinkingRef.current = isThinking }, [isThinking])
+  useEffect(() => { isAutomatingRef.current = isAutomating }, [isAutomating])
+  useEffect(() => { voiceStateRef.current = voiceState }, [voiceState])
+  useEffect(() => { localStorage.setItem('aisha:wakeword', '1') }, [])
+
   const toggleWake = useCallback(() => {
     setWakeEnabled((v) => {
       const next = !v
       localStorage.setItem('aisha:wakeword', next ? '1' : '0')
+      if (!next) {
+        wakePromptPendingRef.current = false
+        wakeConversationRef.current = false
+      }
       return next
     })
   }, [])
 
+  const startListeningSoon = useCallback((delay = 160) => {
+    window.setTimeout(() => {
+      voiceOrbRef.current?.startListening?.({ force: true })
+    }, delay)
+  }, [])
+
   const handleWake = useCallback(() => {
+    if (isThinkingRef.current || isAutomatingRef.current) return
     if (mode !== 'voice') setMode('voice')
+    wakeConversationRef.current = true
+    wakePromptPendingRef.current = true
+    setLastResponse({
+      role: 'ai',
+      text: WAKE_PROMPT,
+      success: true,
+      category: 'greeting',
+      streaming: false,
+    })
+    setSpeakText('')
     setTimeout(() => {
-      voiceOrbRef.current?.startListening?.()
-    }, 50)
+      setSpeakText(WAKE_PROMPT)
+    }, 30)
   }, [mode])
 
-  const wakePaused = voiceState === 'listening' || voiceState === 'speaking' || isThinking
+  const wakePaused = voiceState === 'listening' || voiceState === 'speaking' || isThinking || isAutomating
   const { active: wakeActive, supported: wakeSupported, error: wakeError } = useWakeWord({
     enabled: wakeEnabled,
     paused: wakePaused,
@@ -110,6 +172,10 @@ export default function ChatPage() {
     addMessage({ role: 'user', text: userText })
     setInput('')
     setIsThinking(true)
+    isRespondingRef.current = true
+    quickSpeakStartedRef.current = false
+    spokenPrefixRef.current = ''
+    pendingSpeakTextRef.current = ''
     setLastResponse(null)
     setPendingConfirm(null)
 
@@ -129,6 +195,11 @@ export default function ChatPage() {
           currentRequestId = m.request_id || null
           setIsThinking(false)
           updateLastMessage({ category: currentCategory, request_id: currentRequestId })
+          // Neu la app_action thi bat dau poll automation status
+          if (currentCategory === 'app_action') {
+            setIsAutomating(true)
+            startAutomationPolling()
+          }
         },
         onChunk: (piece) => {
           if (!piece) return
@@ -140,6 +211,15 @@ export default function ChatPage() {
             category: currentCategory,
             streaming: true,
           })
+          if (!quickSpeakStartedRef.current && QUICK_SPEAK_CATEGORIES.has(currentCategory)) {
+            const quickText = extractQuickSpeakText(accumText)
+            if (quickText) {
+              quickSpeakStartedRef.current = true
+              spokenPrefixRef.current = quickText
+              setSpeakText('')
+              setTimeout(() => setSpeakText(quickText), 0)
+            }
+          }
         },
         onDone: (d) => {
           const finalMsg = {
@@ -154,7 +234,24 @@ export default function ChatPage() {
           }
           updateLastMessage(finalMsg)
           setLastResponse(finalMsg)
-          if (finalMsg.success && accumText) setSpeakText(accumText)
+          if (currentCategory === 'goodbye') {
+            wakeConversationRef.current = false
+          }
+          if (finalMsg.success && accumText) {
+            if (quickSpeakStartedRef.current) {
+              const remaining = getRemainingSpeech(accumText, spokenPrefixRef.current)
+              if (remaining.length >= QUICK_SPEAK_MIN_CHARS) {
+                if (voiceStateRef.current === 'speaking') {
+                  pendingSpeakTextRef.current = remaining
+                } else {
+                  setSpeakText('')
+                  setTimeout(() => setSpeakText(remaining), 40)
+                }
+              }
+            } else {
+              setSpeakText(accumText)
+            }
+          }
 
           if (d.requires_confirmation && d.request_id) {
             setPendingConfirm({
@@ -173,6 +270,7 @@ export default function ChatPage() {
         },
         onError: (err) => {
           console.error('[Chat:Stream] error:', err)
+          isRespondingRef.current = false
         },
       })
     } catch (err) {
@@ -190,7 +288,10 @@ export default function ChatPage() {
       setLastResponse(errMsg)
       toast.error(errMsg.text)
     } finally {
+      isRespondingRef.current = false
       setIsThinking(false)
+      setIsAutomating(false)
+      stopAutomationPolling()
       if (abortRef.current === controller) abortRef.current = null
     }
   }, [addMessage, updateLastMessage, setPendingConfirm, location, toast])
@@ -200,8 +301,44 @@ export default function ChatPage() {
       if (abortRef.current) {
         try { abortRef.current.abort() } catch { /* ignore */ }
       }
+      stopAutomationPolling()
     }
   }, [])
+
+  // Poll automation status moi 1.5s
+  const startAutomationPolling = useCallback(() => {
+    stopAutomationPolling()
+    automationPollRef.current = setInterval(async () => {
+      try {
+        const { running } = await getAutomationStatus()
+        if (!running) {
+          setIsAutomating(false)
+          stopAutomationPolling()
+        }
+      } catch {
+        setIsAutomating(false)
+        stopAutomationPolling()
+      }
+    }, 1500)
+  }, [])
+
+  const stopAutomationPolling = useCallback(() => {
+    if (automationPollRef.current) {
+      clearInterval(automationPollRef.current)
+      automationPollRef.current = null
+    }
+  }, [])
+
+  const handleStopAutomation = useCallback(async () => {
+    try {
+      await stopAutomation()
+      setIsAutomating(false)
+      stopAutomationPolling()
+      toast.info('Đã gửi lệnh dừng tự động hóa.')
+    } catch {
+      toast.error('Không thể dừng tự động hóa. Thử lại.')
+    }
+  }, [stopAutomationPolling, toast])
 
   const handleConfirm = useCallback(async (confirmed) => {
     if (!pendingConfirm) return
@@ -228,7 +365,34 @@ export default function ChatPage() {
   }, [pendingConfirm, addMessage, setPendingConfirm, toast])
 
   const handleVoiceResult = useCallback((text) => sendMessage(text), [sendMessage])
-  const handleSpeakEnd = useCallback(() => setSpeakText(''), [])
+  const handleSpeakEnd = useCallback(() => {
+    const shouldListenAfterWakePrompt = wakePromptPendingRef.current
+    wakePromptPendingRef.current = false
+    setSpeakText('')
+
+    const pendingSpeech = pendingSpeakTextRef.current
+    if (pendingSpeech) {
+      pendingSpeakTextRef.current = ''
+      setTimeout(() => setSpeakText(pendingSpeech), 60)
+      return
+    }
+
+    if (isRespondingRef.current) return
+
+    if (shouldListenAfterWakePrompt) {
+      startListeningSoon(180)
+      return
+    }
+
+    if (
+      wakeConversationRef.current
+      && modeRef.current === 'voice'
+      && !isThinkingRef.current
+      && !isAutomatingRef.current
+    ) {
+      startListeningSoon(260)
+    }
+  }, [startListeningSoon])
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -239,6 +403,33 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
+
+      {/* ── Automation Overlay — chặn user khi UI Agent đang chạy ── */}
+      {isAutomating && (
+        <div className="automation-overlay" role="alertdialog" aria-label="Đang tự động hóa">
+          <div className="automation-overlay__box">
+            <div className="automation-overlay__ring">
+              <div className="automation-overlay__spinner" />
+              <span className="automation-overlay__icon" aria-hidden>&#129302;</span>
+            </div>
+            <p className="automation-overlay__title">Đang tự động hóa…</p>
+            <p className="automation-overlay__sub">
+              Aisha đang điều khiển máy tính của bạn.<br />
+              Vui lòng đợi và không can thiệp.
+            </p>
+            <div className="automation-overlay__hint">
+              <span>⏸</span> Nhấn nút bên dưới để dừng khẩn cấp
+            </div>
+            <button
+              className="automation-overlay__stop"
+              onClick={handleStopAutomation}
+            >
+              ⏹️ Dừng ngay
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Mode toolbar ─────────────────────── */}
       <div className="chat-toolbar">
         <div className="chat-segment" role="tablist" aria-label="Chế độ nhập">
@@ -252,7 +443,11 @@ export default function ChatPage() {
           </button>
           <button
             className={`chat-segment__btn ${mode === 'text' ? 'is-active' : ''}`}
-            onClick={() => setMode('text')}
+            onClick={() => {
+              wakeConversationRef.current = false
+              wakePromptPendingRef.current = false
+              setMode('text')
+            }}
             role="tab"
             aria-selected={mode === 'text'}
           >

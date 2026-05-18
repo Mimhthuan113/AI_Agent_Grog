@@ -8,12 +8,15 @@ const STATES = {
   THINKING: 'thinking',
   SPEAKING: 'speaking',
 };
+const NATIVE_SILENCE_STOP_MS = 900;
+const TTS_FETCH_TIMEOUT_MS = 7000;
 
 function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakText }, ref) {
   const [state, setState] = useState(STATES.IDLE);
   const [transcript, setTranscript] = useState('');
   const [volume, setVolume] = useState(0);
   const recognitionRef = useRef(null);
+  const webFinalTextRef = useRef('');
   const analyserRef = useRef(null);
   const animFrameRef = useRef(null);
   const streamRef = useRef(null);
@@ -64,6 +67,7 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
   // Dùng cho APK Android — Web Speech API không có trong WebView nguyên bản
   const nativeListenerRef = useRef(null);
   const nativeFinalTextRef = useRef('');
+  const nativeStopTimerRef = useRef(null);
 
   const startNativeListening = useCallback(async () => {
     let SpeechRecognition;
@@ -104,6 +108,10 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
           if (text) {
             nativeFinalTextRef.current = text;
             setTranscript(text);
+            if (nativeStopTimerRef.current) clearTimeout(nativeStopTimerRef.current);
+            nativeStopTimerRef.current = setTimeout(() => {
+              SpeechRecognition.stop().catch(() => {});
+            }, NATIVE_SILENCE_STOP_MS);
           }
         },
       );
@@ -124,6 +132,10 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
       console.error('Native speech start error:', err);
     } finally {
       // Cleanup
+      if (nativeStopTimerRef.current) {
+        clearTimeout(nativeStopTimerRef.current);
+        nativeStopTimerRef.current = null;
+      }
       if (nativeListenerRef.current) {
         try { await nativeListenerRef.current.remove(); } catch { /* ignore */ }
         nativeListenerRef.current = null;
@@ -141,6 +153,10 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
   }, [onResult, startAudioVisualizer, stopAudioVisualizer]);
 
   const stopNativeListening = useCallback(async () => {
+    if (nativeStopTimerRef.current) {
+      clearTimeout(nativeStopTimerRef.current);
+      nativeStopTimerRef.current = null;
+    }
     try {
       const { SpeechRecognition } = await import('@capacitor-community/speech-recognition');
       await SpeechRecognition.stop();
@@ -160,6 +176,7 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
+    webFinalTextRef.current = '';
 
     recognition.onstart = () => {
       setState(STATES.LISTENING);
@@ -177,16 +194,24 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
           interim += event.results[i][0].transcript;
         }
       }
-      setTranscript(final || interim);
+      const heardText = (final || interim).trim();
+      webFinalTextRef.current = heardText;
+      setTranscript(heardText);
     };
 
     recognition.onend = () => {
       stopAudioVisualizer();
-      if (transcript || recognitionRef.current?._lastTranscript) {
-        const finalText = transcript || recognitionRef.current?._lastTranscript || '';
+      const finalText = (
+        webFinalTextRef.current
+        || recognitionRef.current?._lastTranscript
+        || transcript
+        || ''
+      ).trim();
+      recognitionRef.current = null;
+      if (finalText) {
         if (finalText.trim()) {
           setState(STATES.THINKING);
-          onResult(finalText.trim());
+          onResult(finalText);
         } else {
           setState(STATES.IDLE);
         }
@@ -234,6 +259,8 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
     setState(STATES.SPEAKING);
 
     const playTTS = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), TTS_FETCH_TIMEOUT_MS);
       try {
         const API = getApiUrl();
         const token = localStorage.getItem('token');
@@ -244,6 +271,7 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
             'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({ text: speakText }),
+          signal: controller.signal,
         });
 
         if (!resp.ok) throw new Error(`TTS failed: ${resp.status}`);
@@ -275,11 +303,13 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
         console.error('[Aisha TTS] Error:', err);
         setState(STATES.IDLE);
         if (onSpeakEnd) onSpeakEnd();
+      } finally {
+        clearTimeout(timeout);
       }
     };
 
     playTTS();
-  }, [speakText]);
+  }, [speakText, onSpeakEnd]);
 
   // ── isThinking from parent ────────────────────
   useEffect(() => {
@@ -293,15 +323,18 @@ function VoiceOrbInner({ onResult, onSpeakEnd, onStateChange, isThinking, speakT
     } else if (state === STATES.LISTENING) {
       stopListening();
     } else if (state === STATES.SPEAKING) {
-      speechSynthesis.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       setState(STATES.IDLE);
     }
   };
 
   // Expose imperative API cho parent (wake-word trigger)
   useImperativeHandle(ref, () => ({
-    startListening: () => {
-      if (state === STATES.IDLE) startListening();
+    startListening: (opts = {}) => {
+      if (opts.force || state === STATES.IDLE) startListening();
     },
     stopListening,
     getState: () => state,

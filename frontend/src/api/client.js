@@ -155,10 +155,21 @@ function parseSSEBlock(block, { onMeta, onChunk, onDone }) {
   }
 }
 
-// Confirm — xác nhận lệnh nguy hiểm
+// Confirm — xac nhan lenh nguy hiem
 export const confirmCommand = async (request_id, confirmed) => {
   const { data } = await api.post('/chat/confirm', { request_id, confirmed })
   return data
+}
+
+// UI Agent — kiem soat automation
+export const getAutomationStatus = async () => {
+  const { data } = await api.get('/apps/automation-status')
+  return data  // { running: bool }
+}
+
+export const stopAutomation = async () => {
+  const { data } = await api.post('/apps/stop-automation')
+  return data  // { success, stopped, message }
 }
 
 // Devices
