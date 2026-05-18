@@ -4,9 +4,9 @@ File Operations — Tạo, viết, sửa file/folder trên máy
 AI Agent thật sự — KHÔNG CHỈ MỞ, mà còn TẠO và VIẾT.
 
 Khả năng:
-- Tạo folder ở bất kỳ đâu
+- Tạo folder ở vị trí an toàn
 - Tạo file mới (txt, docx...)
-- Viết nội dung vào file
+- Ghi nội dung ban đầu vào file
 - Mở file bằng app mặc định sau khi tạo
 
 Bảo mật:
@@ -127,51 +127,3 @@ def create_file(name: str, content: str = "", location: str = "desktop", open_af
     except Exception as e:
         logger.error("[FILE_OPS] Failed: %s", str(e)[:200])
         return False, f"Không thể tạo file: {str(e)[:100]}"
-
-
-def write_to_existing_file(path: str, content: str, mode: str = "append") -> tuple[bool, str]:
-    """Viết thêm hoặc ghi đè nội dung file."""
-    target = Path(path).expanduser().resolve()
-    if not _is_safe_path(target):
-        return False, "Không được phép chỉnh sửa file này."
-
-    if not target.exists():
-        return False, f"File không tồn tại: {path}"
-
-    try:
-        open_mode = "a" if mode == "append" else "w"
-        with open(target, open_mode, encoding="utf-8") as f:
-            f.write(content)
-        logger.info("[FILE_OPS] Written to %s (%s, %d chars)", target, mode, len(content))
-        return True, f"Đã {'thêm vào' if mode == 'append' else 'ghi lại'} file {target.name}."
-    except Exception as e:
-        return False, f"Không thể viết file: {str(e)[:100]}"
-
-
-def delete_file_or_folder(path: str) -> tuple[bool, str]:
-    """Xóa file hoặc folder (đưa vào Recycle Bin nếu có thể)."""
-    target = Path(path).expanduser().resolve()
-    if not _is_safe_path(target):
-        return False, "Không được phép xóa ở đường dẫn này."
-
-    if not target.exists():
-        return False, f"Không tìm thấy: {path}"
-
-    try:
-        # Thử dùng send2trash (safe delete)
-        try:
-            from send2trash import send2trash
-            send2trash(str(target))
-            logger.info("[FILE_OPS] Sent to trash: %s", target)
-            return True, f"Đã đưa {target.name} vào Thùng rác."
-        except ImportError:
-            # Fallback: xóa thật
-            if target.is_file():
-                target.unlink()
-            elif target.is_dir():
-                import shutil
-                shutil.rmtree(str(target))
-            logger.info("[FILE_OPS] Deleted: %s", target)
-            return True, f"Đã xóa {target.name}."
-    except Exception as e:
-        return False, f"Không thể xóa: {str(e)[:100]}"

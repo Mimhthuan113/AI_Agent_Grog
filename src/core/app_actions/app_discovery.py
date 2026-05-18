@@ -15,10 +15,22 @@ import sys
 import logging
 import subprocess
 import struct
+import re
+import unicodedata
 from pathlib import Path
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_app_name(text: str) -> str:
+    """Normalize app names for matching user text to scanned apps."""
+    text = (text or "").lower().strip()
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = text.replace("đ", "d")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 # ═══════════════════════════════════════════════════════════
 # Quét Windows Registry
@@ -203,21 +215,53 @@ def search_installed_app(query: str) -> dict | None:
     """
     apps = get_discovered_apps()
     query_lower = query.lower().strip()
+    query_norm = normalize_app_name(query)
+    if not query_norm:
+        return None
 
     # Exact match
     if query_lower in apps:
         return apps[query_lower]
 
+    normalized_apps: list[tuple[str, str, dict]] = [
+        (normalize_app_name(key), normalize_app_name(info["display"]), info)
+        for key, info in apps.items()
+    ]
+
+    for key_norm, display_norm, info in normalized_apps:
+        if query_norm == key_norm or query_norm == display_norm:
+            return info
+
     # Partial match — tìm app chứa query
     candidates = []
-    for key, info in apps.items():
-        if query_lower in key or query_lower in info["display"].lower():
-            candidates.append(info)
+    for key_norm, display_norm, info in normalized_apps:
+        if query_norm in key_norm or query_norm in display_norm:
+            candidates.append((0, len(info["display"]), info))
+        elif key_norm and key_norm in query_norm:
+            candidates.append((1, len(info["display"]), info))
+        elif display_norm and display_norm in query_norm:
+            candidates.append((1, len(info["display"]), info))
 
     # Ưu tiên match ngắn nhất (gần nhất)
     if candidates:
-        candidates.sort(key=lambda x: len(x["display"]))
-        return candidates[0]
+        candidates.sort(key=lambda x: (x[0], x[1]))
+        return candidates[0][2]
+
+    query_tokens = set(query_norm.split())
+    token_candidates: list[tuple[int, int, dict]] = []
+    for key_norm, display_norm, info in normalized_apps:
+        app_tokens = set((display_norm or key_norm).split())
+        if not app_tokens:
+            continue
+        overlap = len(query_tokens & app_tokens)
+        if overlap:
+            token_candidates.append((-overlap, len(app_tokens), info))
+
+    if token_candidates:
+        token_candidates.sort(key=lambda x: (x[0], x[1]))
+        best_overlap = -token_candidates[0][0]
+        if best_overlap >= max(1, min(2, len(query_tokens))):
+            return token_candidates[0][2]
 
     return None
 
