@@ -158,14 +158,6 @@ APP_ACTION_KEYWORDS = [
     # Web
     "tìm kiếm", "tim kiem", "search", "mở trang", "mo trang",
     "google",
-    # System Apps (generic)
-    "notepad", "paint", "calculator", "máy tính", "may tinh",
-    "explorer", "this pc", "thu muc", "thư mục",
-    "đồng hồ", "dong ho", "báo thức", "bao thuc", "alarm", "clock",
-    "cài đặt", "cai dat", "settings",
-    "vscode", "vs code", "word", "excel", "powerpoint",
-    "cmd", "powershell", "task manager",
-    "edge", "firefox",
     # File Operations
     "tạo folder", "tao folder", "tạo thư mục", "tao thu muc",
     "tạo file", "tao file", "tạo tập tin", "tao tap tin",
@@ -183,6 +175,8 @@ TÊN: Aisha (viết tắt: AI Smart Home Assistant)
 TÍNH CÁCH:
 - Nữ tính, thân thiện, vui vẻ, hơi dí dỏm
 - Trả lời ngắn gọn (1-2 câu), tự nhiên, có dấu tiếng Việt
+- Luôn trả lời bằng tiếng Việt; không chen tiếng Anh trừ tên riêng hoặc lệnh kỹ thuật
+- Không dùng emoji trong câu trả lời
 - Gọi người dùng là "bạn"
 - Xưng "tôi" hoặc "Aisha"
 - Không bao giờ dùng ngôn ngữ thô tục
@@ -259,7 +253,15 @@ def classify_intent(text: str) -> IntentCategory:
         if re.search(pattern, text_lower, re.IGNORECASE):
             return IntentCategory.DANGEROUS
 
-    # 2. App Action — TRƯỚC smart home (tránh "mở youtube" bị nhầm thành smart home)
+    try:
+        from src.core.app_actions.router import parse_app_intent
+
+        if parse_app_intent(text):
+            return IntentCategory.APP_ACTION
+    except Exception as exc:
+        logger.debug("[SIRI] Dynamic app parse unavailable: %s", str(exc)[:100])
+
+    # 2. Connector/file keywords only; local desktop apps are parsed dynamically above.
     for kw in APP_ACTION_KEYWORDS:
         if kw in text_lower:
             return IntentCategory.APP_ACTION
@@ -340,23 +342,15 @@ def handle_time_query(text: str) -> str:
 
 def handle_greeting() -> str:
     """Chào hỏi thân thiện."""
-    now = datetime.now(VN_TZ)
-    hour = now.hour
-    if hour < 12:
-        greeting = "Chào buổi sáng"
-    elif hour < 18:
-        greeting = "Chào buổi chiều"
-    else:
-        greeting = "Chào buổi tối"
-    return f"{greeting}! Tôi có thể giúp gì cho bạn? 😊"
+    return "Tôi có thể giúp gì cho bạn?"
 
 
 def handle_self_intro() -> str:
     """Giới thiệu bản thân."""
     return (
-        "Xin chào! Tôi là Aisha — trợ lý nhà thông minh của bạn. "
+        "Xin chào! Tôi là Aisha, trợ lý nhà thông minh của bạn. "
         "Tôi có thể điều khiển đèn, quạt, điều hòa, và trả lời câu hỏi của bạn. "
-        "Hãy nói hoặc gõ lệnh bằng tiếng Việt nhé! 💁‍♀️"
+        "Hãy nói hoặc gõ lệnh bằng tiếng Việt nhé!"
     )
 
 
@@ -369,10 +363,10 @@ def handle_thanks() -> str:
     """Phản hồi cảm ơn."""
     import random
     responses = [
-        "Không có gì, Aisha luôn sẵn sàng giúp bạn! 😊",
-        "Rất vui khi giúp được bạn! 💁‍♀️",
-        "Có gì cứ gọi Aisha nhé! 🤗",
-        "Aisha hạnh phúc khi bạn hài lòng! ✨",
+        "Không có gì, Aisha luôn sẵn sàng giúp bạn!",
+        "Rất vui khi giúp được bạn!",
+        "Có gì cứ gọi Aisha nhé!",
+        "Aisha rất vui khi bạn hài lòng!",
     ]
     return random.choice(responses)
 
@@ -382,18 +376,18 @@ def handle_goodbye() -> str:
     now = datetime.now(VN_TZ)
     hour = now.hour
     if hour >= 21 or hour < 5:
-        return "Chúc bạn ngủ ngon! Hẹn gặp lại nhé 🌙"
-    return "Tạm biệt bạn! Hẹn gặp lại nhé 👋"
+        return "Chúc bạn ngủ ngon! Hẹn gặp lại nhé."
+    return "Tạm biệt bạn! Hẹn gặp lại nhé."
 
 
 def handle_compliment() -> str:
     """Phản hồi khen ngợi."""
     import random
     responses = [
-        "Ôi, bạn làm Aisha ngại quá! Cảm ơn bạn nhé 😊",
-        "Bạn cũng rất dễ thương luôn! 💕",
-        "Hehe, Aisha cảm ơn bạn nhiều! 🥰",
-        "Bạn nói vậy Aisha vui lắm! ✨",
+        "Ôi, bạn làm Aisha ngại quá! Cảm ơn bạn nhé.",
+        "Bạn cũng rất dễ thương luôn!",
+        "Aisha cảm ơn bạn nhiều!",
+        "Bạn nói vậy Aisha vui lắm!",
     ]
     return random.choice(responses)
 
@@ -436,10 +430,10 @@ async def handle_general_chat(
             answer = response.content.strip()
         else:
             logger.warning("[SIRI] LLM failed: %s", response.error)
-            answer = "Aisha chưa trả lời được câu này. Bạn thử hỏi khác nhé! 😅"
+            answer = "Aisha chưa trả lời được câu này. Bạn thử hỏi khác nhé!"
     except asyncio.TimeoutError:
         logger.warning("[SIRI] LLM timeout (3s) for: '%s'", text[:50])
-        answer = "Aisha đang suy nghĩ hơi lâu. Bạn thử hỏi câu đơn giản hơn nhé! 🤔"
+        answer = "Aisha đang suy nghĩ hơi lâu. Bạn thử hỏi câu đơn giản hơn nhé!"
     except Exception as e:
         logger.error("[SIRI] LLM error: %s", str(e)[:100])
         answer = "Xin lỗi, Aisha đang gặp sự cố. Bạn thử lại sau nhé!"
@@ -480,9 +474,28 @@ async def process(
     category = classify_intent(user_input)
     logger.info("[SIRI] Input: '%s' → Category: %s", user_input[:60], category.value)
 
-    # Build location context 1 lần duy nhất (dùng chung cho nhiều handler)
+    if category == IntentCategory.APP_ACTION:
+        return SiriResponse(
+            text="",
+            category=category,
+        )
+
+    if category == IntentCategory.SMART_HOME:
+        # Trả về marker — agent.py sẽ xử lý qua Gateway
+        return SiriResponse(
+            text="",  # Agent sẽ fill response
+            category=category,
+            is_smart_home=True,
+        )
+
+    # Build location context chỉ khi thật sự cần dùng. App/smart-home không cần geocode.
     location_context = None
-    if user_location and user_location.get("lat") and user_location.get("lng"):
+    if (
+        category in (IntentCategory.LOCATION_QUERY, IntentCategory.GENERAL_CHAT)
+        and user_location
+        and user_location.get("lat")
+        and user_location.get("lng")
+    ):
         try:
             from src.core.location.geocoder import format_location_context
             location_context = format_location_context(
@@ -544,14 +557,6 @@ async def process(
         return SiriResponse(
             text=handle_compliment(),
             category=category,
-        )
-
-    if category == IntentCategory.SMART_HOME:
-        # Trả về marker — agent.py sẽ xử lý qua Gateway
-        return SiriResponse(
-            text="",  # Agent sẽ fill response
-            category=category,
-            is_smart_home=True,
         )
 
     # General chat → LLM (timeout 3s) — với location context

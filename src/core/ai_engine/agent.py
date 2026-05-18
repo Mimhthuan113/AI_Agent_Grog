@@ -25,6 +25,8 @@ from src.core.ai_engine.siri_brain import (
 from src.core.security.gateway import get_gateway, GatewayResponse
 from src.services.ha_provider.entity_registry import ENTITY_REGISTRY
 from src.core.app_actions.router import parse_app_intent, execute_app_action
+from src.core.app_actions.permissions import is_provider_allowed, deny_message
+from src.core.ai_engine.groq_client import get_groq_client
 
 logger = logging.getLogger(__name__)
 
@@ -105,25 +107,42 @@ async def process_message(
     """
     logger.info("[AGENT] Processing: '%s' (user=%s)", user_message[:80], user_id)
 
+    try:
+        groq = get_groq_client()
+    except Exception:
+        groq = None
+
     # ── Step 1: Siri Brain phân loại ──────────────────────
-    siri_result: SiriResponse = await siri_process(user_message, user_id, user_location=user_location)
+    siri_result: SiriResponse = await siri_process(
+        user_message,
+        user_id,
+        groq=groq,
+        user_location=user_location,
+    )
 
-    # ── Nếu APP_ACTION → route qua App Router (owner only) ──
+    # ── Nếu APP_ACTION → route qua App Router (RBAC theo whitelist) ──
     if siri_result.category == IntentCategory.APP_ACTION:
-        # RBAC: chỉ owner mới được dùng app actions
-        if user_roles and "owner" not in user_roles:
-            return AgentResponse(
-                message="Xin lỗi, chức năng điều khiển ứng dụng chỉ dành cho chủ nhà.",
-                success=False,
-                request_id="rbac-app",
-                category="app_action",
-            )
-
         app_intent = parse_app_intent(user_message)
         if app_intent:
+            # RBAC: kiểm tra provider có nằm trong quyền của user không.
+            # Owner: luôn pass. Guest: chỉ provider trong GUEST_ALLOWED_PROVIDERS.
+            provider_name = app_intent["provider"]
+            if not is_provider_allowed(provider_name, user_roles):
+                logger.info(
+                    "[AGENT] RBAC denied: user=%s roles=%s provider=%s",
+                    user_id, user_roles, provider_name,
+                )
+                return AgentResponse(
+                    message=deny_message(provider_name),
+                    success=False,
+                    request_id="rbac-app",
+                    category="app_action",
+                )
+
             # Đính kèm GPS location vào params nếu có
             if user_location:
                 app_intent["params"]["_location"] = user_location
+
             result = await execute_app_action(
                 app_intent["provider"],
                 app_intent["action"],

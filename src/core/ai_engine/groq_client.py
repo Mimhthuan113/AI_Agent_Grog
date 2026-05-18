@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import time
 import logging
+import threading
 import urllib.request
 import urllib.error
 from dataclasses import dataclass
@@ -47,12 +48,17 @@ class GroqClient:
 
     def __init__(self):
         settings = get_settings()
-        self._api_key = settings.groq_api_key
+        self._api_keys = settings.groq_chat_api_key_list
+        if not self._api_keys:
+            self._api_keys = [settings.groq_api_key]
+        self._key_index = 0
+        self._key_lock = threading.Lock()
         self._model = settings.groq_model_default
         self._max_tokens = settings.groq_max_tokens
         self._temperature = settings.groq_temperature
         self._timeout = settings.groq_timeout
         self._max_retries = 3
+        logger.info("[GROQ] Chat key pool loaded: %d key(s)", len(self._api_keys))
 
         # Langfuse tracing (optional)
         self._langfuse = None
@@ -98,7 +104,8 @@ class GroqClient:
         for attempt in range(self._max_retries + 1):
             try:
                 start = time.monotonic()
-                result = self._call_api(payload)
+                api_key = self._next_api_key()
+                result = self._call_api(payload, api_key)
                 latency = int((time.monotonic() - start) * 1000)
 
                 content = result["choices"][0]["message"]["content"]
@@ -130,12 +137,13 @@ class GroqClient:
 
             except urllib.error.HTTPError as e:
                 if e.code == 429 and attempt < self._max_retries:
-                    wait = 2 ** attempt  # 1s, 2s, 4s
+                    wait = 0 if len(self._api_keys) > 1 else 2 ** attempt
                     logger.warning(
-                        "[GROQ] Rate limited (429). Retry %d/%d in %ds...",
+                        "[GROQ] Rate limited (429). Retry %d/%d in %ds with next key...",
                         attempt + 1, self._max_retries, wait,
                     )
-                    time.sleep(wait)
+                    if wait:
+                        time.sleep(wait)
                     continue
                 else:
                     error_body = ""
@@ -200,14 +208,21 @@ class GroqClient:
         except Exception as e:
             logger.debug("[GROQ] Langfuse trace failed: %s", str(e)[:100])
 
-    def _call_api(self, payload: dict) -> dict:
+    def _next_api_key(self) -> str:
+        """Return next key in round-robin order."""
+        with self._key_lock:
+            key = self._api_keys[self._key_index % len(self._api_keys)]
+            self._key_index += 1
+            return key
+
+    def _call_api(self, payload: dict, api_key: str) -> dict:
         """Raw API call toi Groq."""
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             self.API_URL,
             data=data,
             headers={
-                "Authorization": f"Bearer {self._api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "User-Agent": "SmartAIHomeHub/1.0",
             },
@@ -261,47 +276,62 @@ class GroqClient:
                 pool=5.0,
             )
             async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    self.API_URL,
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {self._api_key}",
-                        "Content-Type": "application/json",
-                        "User-Agent": "SmartAIHomeHub/1.0",
-                        "Accept": "text/event-stream",
-                    },
-                ) as resp:
-                    if resp.status_code != 200:
-                        error_body = (await resp.aread()).decode("utf-8", errors="replace")[:200]
-                        logger.error("[GROQ:Stream] HTTP %d: %s", resp.status_code, error_body)
-                        return
-
-                    async for line in resp.aiter_lines():
-                        # Bỏ qua heartbeat "..." hoặc dòng rỗng
-                        if not line:
-                            continue
-                        if not line.startswith("data:"):
-                            continue
-                        data_str = line[5:].strip()
-                        if not data_str:
-                            continue
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                        except json.JSONDecodeError:
+                for attempt in range(self._max_retries + 1):
+                    api_key = self._next_api_key()
+                    async with client.stream(
+                        "POST",
+                        self.API_URL,
+                        json=payload,
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                            "User-Agent": "SmartAIHomeHub/1.0",
+                            "Accept": "text/event-stream",
+                        },
+                    ) as resp:
+                        if resp.status_code == 429 and attempt < self._max_retries:
+                            await resp.aread()
+                            wait = 0 if len(self._api_keys) > 1 else 2 ** attempt
+                            logger.warning(
+                                "[GROQ:Stream] Rate limited. Retry %d/%d in %ds with next key...",
+                                attempt + 1, self._max_retries, wait,
+                            )
+                            if wait:
+                                import asyncio
+                                await asyncio.sleep(wait)
                             continue
 
-                        # Defensive parsing — tránh KeyError nếu format đổi
-                        choices = chunk.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta") or {}
-                        content = delta.get("content") or ""
-                        if content:
-                            full_response += content
-                            yield content
+                        if resp.status_code != 200:
+                            error_body = (await resp.aread()).decode("utf-8", errors="replace")[:200]
+                            logger.error("[GROQ:Stream] HTTP %d: %s", resp.status_code, error_body)
+                            return
+
+                        async for line in resp.aiter_lines():
+                            # Bỏ qua heartbeat "..." hoặc dòng rỗng
+                            if not line:
+                                continue
+                            if not line.startswith("data:"):
+                                continue
+                            data_str = line[5:].strip()
+                            if not data_str:
+                                continue
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+
+                            # Defensive parsing — tránh KeyError nếu format đổi
+                            choices = chunk.get("choices") or []
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta") or {}
+                            content = delta.get("content") or ""
+                            if content:
+                                full_response += content
+                                yield content
+                        break
 
             latency = int((time.monotonic() - start) * 1000)
             logger.info(
