@@ -5,7 +5,6 @@ User gui cau tieng Viet → AI parse → Security Gateway → Response
 
 Endpoints:
 - POST /chat       → Gui lenh dieu khien
-- GET  /devices    → Xem danh sach thiet bi
 - GET  /audit      → Xem lich su lenh
 """
 
@@ -16,17 +15,18 @@ from datetime import datetime, timezone
 
 import json as _json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.api.middlewares.auth import CurrentUser, get_current_user
 from src.core.ai_engine.agent import process_message, AgentResponse
-from src.services.ha_provider.entity_registry import get_all_entities
 from src.core.security.audit_logger import get_audit_logger
 from src.api.routes.monitor import emit_pipeline_event
 
 logger = logging.getLogger(__name__)
+CHAT_FIRST_TOKEN_TIMEOUT_SEC = 1.4
+CHAT_STREAM_MAX_TOKENS = 140
 router = APIRouter(tags=["Chat & Control"])
 
 
@@ -53,21 +53,6 @@ class ChatResponse(BaseModel):
     command: dict | None = None
     timestamp: str
     pipeline_steps: list[dict] | None = None  # Workflow monitor
-
-
-class DeviceInfo(BaseModel):
-    entity_id: str
-    friendly_name: str
-    device_type: str
-
-
-class AuditEntry(BaseModel):
-    request_id: str
-    entity_id: str
-    action: str
-    decision: str
-    timestamp: str
-    user_id: str
 
 
 # ── Endpoints ──────────────────────────────────────────────
@@ -188,7 +173,6 @@ async def chat_stream(
             SIRI_SYSTEM_PROMPT, _get_memory,
         )
         from src.core.ai_engine.groq_client import get_groq_client
-        from src.core.location.geocoder import format_location_context
 
         # Hint khởi tạo cho proxy: gửi 1 comment ngay → nhiều proxy mới flush header
         yield ": stream-start\n\n"
@@ -205,6 +189,14 @@ async def chat_stream(
         # 2. Nếu KHÔNG phải general_chat → fallback non-stream qua process_message
         if category != IntentCategory.GENERAL_CHAT:
             try:
+                early_text = None
+                if category == IntentCategory.APP_ACTION:
+                    early_text = "Được rồi. "
+                elif category == IntentCategory.SMART_HOME:
+                    early_text = "Được rồi. "
+                if early_text:
+                    yield f"data: {_json.dumps({'type': 'chunk', 'text': early_text}, ensure_ascii=False)}\n\n"
+
                 result = await process_message(
                     user_message=body.message,
                     user_id=user.user_id,
@@ -232,38 +224,44 @@ async def chat_stream(
                 yield f"data: {_json.dumps({'type': 'done', 'success': False, 'request_id': request_id}, ensure_ascii=False)}\n\n"
             return
 
-        # 3. General chat → stream từ LLM
-        # format_location_context là sync I/O (HTTP geocode) → wrap to_thread tránh block event loop
-        location_context = None
-        if body.lat is not None and body.lng is not None:
-            try:
-                location_context = await asyncio.to_thread(
-                    format_location_context, body.lat, body.lng
-                )
-            except Exception as e:  # noqa: BLE001
-                logger.debug("[CHAT:Stream] geocode skip: %s", str(e)[:80])
-
+        # 3. General chat → stream từ LLM.
+        # Không reverse-geocode ở nhánh chat thường: Google/Nominatim có thể ăn 3-6s.
+        # Câu hỏi vị trí đã đi qua nhánh LOCATION_QUERY ở process_message().
         memory = _get_memory(user.user_id)
         memory.add("user", body.message)
 
-        system_prompt = SIRI_SYSTEM_PROMPT
-        if location_context:
-            system_prompt += (
-                f"\n\nTHÔNG TIN VỊ TRÍ HIỆN TẠI:\n{location_context}\n"
-                "(Dùng thông tin này khi người dùng hỏi về vị trí, địa điểm, hoặc chỉ đường)"
-            )
-
-        messages = [{"role": "system", "content": system_prompt}]
+        messages = [{"role": "system", "content": SIRI_SYSTEM_PROMPT}]
         messages.extend(memory.get_history())
 
         groq = get_groq_client()
         full_text = ""
         success = True
+        stream = groq.chat_stream(messages, max_tokens=CHAT_STREAM_MAX_TOKENS)
         try:
-            async for piece in groq.chat_stream(messages, max_tokens=200):
+            first_piece = await asyncio.wait_for(
+                anext(stream),
+                timeout=CHAT_FIRST_TOKEN_TIMEOUT_SEC,
+            )
+            full_text += first_piece
+            yield f"data: {_json.dumps({'type': 'chunk', 'text': first_piece}, ensure_ascii=False)}\n\n"
+
+            async for piece in stream:
                 full_text += piece
                 chunk = {"type": "chunk", "text": piece}
                 yield f"data: {_json.dumps(chunk, ensure_ascii=False)}\n\n"
+        except StopAsyncIteration:
+            pass
+        except asyncio.TimeoutError:
+            success = False
+            logger.warning(
+                "[CHAT:Stream] first token timeout %.1fs request_id=%s",
+                CHAT_FIRST_TOKEN_TIMEOUT_SEC,
+                request_id,
+            )
+            try:
+                await stream.aclose()
+            except Exception:
+                pass
         except asyncio.CancelledError:
             # Client disconnect → ngừng êm, không log noise
             logger.info("[CHAT:Stream] client disconnected, request_id=%s", request_id)
@@ -300,20 +298,6 @@ async def chat_stream(
 
 
 @router.get(
-    "/devices",
-    response_model=list[DeviceInfo],
-    summary="Danh sach thiet bi",
-    description="Xem tat ca thiet bi da dang ky trong he thong.",
-)
-async def list_devices(
-    user: CurrentUser = Depends(get_current_user),
-):
-    """Tra ve danh sach thiet bi tu Entity Registry."""
-    entities = get_all_entities()
-    return [DeviceInfo(**e) for e in entities]
-
-
-@router.get(
     "/audit",
     summary="Lich su lenh",
     description="Xem lich su cac lenh da thuc hien (audit log).",
@@ -341,7 +325,6 @@ async def get_audit_log(
 
 # ── Confirmation Flow ──────────────────────────────────────
 
-import time as _time
 from src.core.security.gateway import get_gateway
 from src.core.security.pending_store import get_pending_store
 

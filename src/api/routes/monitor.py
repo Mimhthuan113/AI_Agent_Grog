@@ -11,7 +11,7 @@ import logging
 from collections import deque
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
-from sse_starlette.sse import EventSourceResponse
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,12 @@ router = APIRouter(prefix="/monitor", tags=["monitor"])
 # Lưu 100 events gần nhất + broadcast cho connected clients
 _event_queue: deque[dict] = deque(maxlen=200)
 _subscribers: list[asyncio.Queue] = []
+
+
+def _sse_message(event: str, data: dict) -> str:
+    """Build one Server-Sent Events frame without requiring sse-starlette."""
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {payload}\n\n"
 
 
 def broadcast_event(event: dict):
@@ -76,20 +82,23 @@ async def monitor_stream(request: Request):
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    yield {
-                        "event": event.get("type", "pipeline"),
-                        "data": json.dumps(event, ensure_ascii=False),
-                    }
+                    yield _sse_message(event.get("type", "pipeline"), event)
                 except asyncio.TimeoutError:
                     # Heartbeat để giữ kết nối
-                    yield {
-                        "event": "ping",
-                        "data": json.dumps({"ts": int(time.time() * 1000)}),
-                    }
+                    yield _sse_message("ping", {"ts": int(time.time() * 1000)})
         finally:
-            _subscribers.remove(queue)
+            if queue in _subscribers:
+                _subscribers.remove(queue)
 
-    return EventSourceResponse(event_generator())
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/history")

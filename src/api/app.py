@@ -31,6 +31,7 @@ from src.api.routes.voice import router as voice_router
 from src.api.routes.monitor import router as monitor_router
 from src.api.routes.apps import router as apps_router
 from src.api.routes.users import router as users_router
+from src.api.routes.devices import router as devices_router
 
 # ── Logging Setup ──────────────────────────────────────────
 logging.basicConfig(
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(monitor_router)
     app.include_router(apps_router)
     app.include_router(users_router)
+    app.include_router(devices_router)
 
     # ── Static Files (Frontend) ────────────────────────────
     static_dir = Path(__file__).parent.parent.parent / "static"
